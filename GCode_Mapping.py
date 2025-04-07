@@ -3,14 +3,37 @@ import re
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
+from abc import ABC, abstractmethod
+from enum import Enum, auto
 
 
-class MarlinGcodeScraper:
+class GCodeFlavor(Enum):
+    GENERIC = auto()
+    MARLIN = auto()
+    KLIPPER = auto()
+    # REPETIER = auto()
+
+
+class GCode_Mapping(ABC):
+    def __init__(self):
+        self.gcode_type = GCodeFlavor.GENERIC
+        print("Initializing GCode Mapping for ...")
+
+    def fetch_gcode_mapping(self):
+        pass
+
+    def set_type(self, found_type):
+        self.gcode_type = found_type
+
+
+class MarlinGcodeScraper(GCode_Mapping):
     def __init__(self, url="https://marlinfw.org/meta/gcode/"):
         """
         Initializes a headless Chrome driver via Selenium
         to load JavaScript-based content from the Marlin G-code page.
         """
+        super().__init__()
+        print("... Marlin")
         self.url = url
         chrome_options = Options()
         chrome_options.add_argument("--headless")  # Run browser in headless mode
