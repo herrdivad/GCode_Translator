@@ -1,8 +1,10 @@
 import base64
+import os
+import sys
 
 import helper
-from GCode_Mapping import MarlinGcodeScraper, GCode_Mapping, GCodeFlavor
-from typing import Dict
+import Binary_GCode_Translator
+import GCode_Mapping
 
 
 class GCodeTranslator:
@@ -10,12 +12,12 @@ class GCodeTranslator:
         self.line_is_a_picture = False
         self.picture_code = []
         self.output_dict = {}
-        print("Initializing GCode Translator")
+        # print("Initializing GCode Translator")
 
     def init_mapping(self):
-        scraper = GCode_Mapping()
-        if scraper.gcode_type == GCodeFlavor.GENERIC or scraper.gcode_type == GCodeFlavor.MARLIN:
-            scraper = MarlinGcodeScraper()
+        scraper = GCode_Mapping.GCode_Mapping()
+        if scraper.gcode_type == GCode_Mapping.GCodeFlavor.GENERIC or scraper.gcode_type == GCode_Mapping.GCodeFlavor.MARLIN:
+            scraper = GCode_Mapping.MarlinGcodeScraper()
         mapping = {}  # initialize as valid empty dic
         try:
             mapping = scraper.fetch_gcode_mapping()
@@ -25,18 +27,25 @@ class GCodeTranslator:
             scraper.close()
         return mapping
 
-    def explain_gcode_line(self, line_to_translate, mapping, preview_picture_needed=True):
+    def explain_gcode_line(self, line_to_translate, mapping, preview_picture_needed=True, preview_pic_as_file=True) -> tuple[str, bool]:
         if line_to_translate.startswith("; thumbnail end"):
             self.line_is_a_picture = False
-            if preview_picture_needed:
+            if preview_picture_needed and preview_pic_as_file:
                 self.transform_preview_picture()
-            return ""
+            return "", False
         if line_to_translate.startswith("; thumbnail begin") or self.line_is_a_picture:
-            self.line_is_a_picture = True
-            self.extract_preview_picture(line_to_translate)
-            return ""
+            if not self.line_is_a_picture:
+                self.picture_code = []
+                self.line_is_a_picture = True
+            if preview_picture_needed:
+                self.extract_preview_picture(line_to_translate)
+            return "", False
+        blacklist = ["thumbnail", "base64", "preview", "width:", "height:", "layer", "type:", "time_elapsed:", "mesh:", "gimage", "simage",
+                     "extrude_ratio:", "structure:", "support-"]  # if some important Comment or Metadata is missing, check this blacklist and adjust!
+        if self.is_valid_comment(line_to_translate, blacklist):
+            return line_to_translate[1:200].strip(), True
         if line_to_translate.startswith(";") or line_to_translate.strip() == "":
-            return line_to_translate
+            return line_to_translate, False
 
         parts = line_to_translate.strip().split()
         cmd = parts[0]
@@ -45,12 +54,12 @@ class GCodeTranslator:
         if mapping is not None:
             explanation = mapping.get(cmd, "Unknown command")
             param_str = "True" if not params else " ".join(params)
-            if param_str == "True":
-                print(f"{cmd}: {explanation} | Parameter: {param_str}")
-            return f"{cmd}: {explanation} | Parameter: {param_str}"
+            # if param_str == "True":
+                # print(f"{cmd}: {explanation} | Parameter: {param_str}")
+            return f"{cmd}: {explanation} | Parameter: {param_str}", False
         else:
             param_str = "True" if not params else " ".join(params)
-            return f"{cmd}: Unknown mapping | Parameter: {param_str}"
+            return f"{cmd}: Unknown mapping | Parameter: {param_str}", False
 
     def translated_line_to_dict(self, translated_line):
         if "|" in translated_line:
@@ -87,13 +96,14 @@ class GCodeTranslator:
                 ]
                 self.output_dict[key] = cleaned_list
 
-    def sort_and_filter_dict(self, should_sort=True, should_filter=True):
+    def sort_and_filter_dict(self, lists_to_strings=False, should_sort=True, should_filter=True):
         if should_sort:
             # noinspection PyUnusedLocal
             def my_gcode_sort_key(key_: str):
                 # inner function to extract sortable key
                 prefix = key_[0]
-                number = int(''.join(filter((lambda c: c.isdigit()), key_)))
+                digits = ''.join(filter(lambda c: c.isdigit(), key_))
+                number = int(digits) if digits else 77777  # Magic Number / WTF-Marker: Fallback case for no number Codes
                 return prefix, number
 
             self.output_dict = dict(sorted(self.output_dict.items(), key=lambda item: my_gcode_sort_key(item[0])))
@@ -104,11 +114,11 @@ class GCodeTranslator:
             other_dict = {}
             for key, value in self.output_dict.items():
                 if key.startswith("G"):
-                    g_dict[key] = value
+                    g_dict[key] = str(value) if lists_to_strings else value
                 elif key.startswith("M"):
-                    m_dict[key] = value
+                    m_dict[key] = str(value) if lists_to_strings else value
                 else:
-                    other_dict[key] = value
+                    other_dict[key] = str(value) if lists_to_strings else value
 
             return [g_dict, m_dict, other_dict]
 
@@ -118,33 +128,83 @@ class GCodeTranslator:
         if not line_to_translate.startswith("; thumbnail"):
             self.picture_code.append(line_to_translate.lstrip("; ").strip())
 
-    def transform_preview_picture(self):
+    def get_preview_as_stream(self):
         if not self.picture_code:
             print("⚠️ No preview image data found.")
-            return
+            return None
 
         base64_data = "".join(self.picture_code)
         try:
-            image_data = base64.b64decode(base64_data)
+            return base64.b64decode(base64_data)
         except Exception as e:
             print(f"❌ Failed to decode preview image: {e}")
-            return
+            return None
 
+    def transform_preview_picture(self):
+        image_data = self.get_preview_as_stream()
+        if not image_data:
+            return
         pic_name = "preview.png"
         with open(pic_name, "wb") as img_file:
             img_file.write(image_data)
         print(f"✅ Thumbnail saved as '{pic_name}'.")
 
+    def is_valid_comment(self, com_line: str, blacklist: list[str]) -> bool:
+        """
+        Checks whether a line is a meaningful G-code comment.
+        - Accepts comments that start with ';' or '; ' and contain real content.
+        - Ignores lines that contain any blacklisted words.
+
+        :param com_line: The line to check (typically from a G-code file)
+        :param blacklist: List of lowercase terms to reject (e.g. ['thumbnail', 'base64'])
+        :return: True if the line is a meaningful comment and not blacklisted
+        """
+        # Normalize line for easier checks
+        com_line = com_line.strip()
+
+        # Rule 1: Comment starts with '; ' and contains more than just one word
+        has_comment_structure = (
+                (com_line.startswith("; ") and " " in com_line[2:]) or
+                (com_line.startswith(";") and len(com_line) > 1 and com_line[1] != " ")
+        )
+
+        # Rule 2: Blacklist check (case-insensitive)
+        not_blacklisted = not any(bad_word in com_line.lower() for bad_word in blacklist)
+
+        return has_comment_structure and not_blacklisted
+
 
 if __name__ == "__main__":
-    with open("MainConnectorCover_0.4n_0.2mm_PLA_MINIIS_16m(1).gcode") as f:
-        translator = GCodeTranslator()
-        gcode_mapping = translator.init_mapping()
-        for line in f:
-            result = translator.explain_gcode_line(line, gcode_mapping)
-            # with open("output.txt", "a") as o:
-            # o.write(result+"\n")
-            translator.translated_line_to_dict(result)
-        translator.clean_str_from_dict()
-        dictList_for_converter = translator.sort_and_filter_dict()
-        print(dictList_for_converter)
+    if len(sys.argv) != 2:
+        print("Usage: python GCode_Translator.py <GCode file>")
+        sys.exit(1)
+    file = sys.argv[1]
+    if os.path.isfile(file):
+        if file.endswith(".bgcode"):
+            file = Binary_GCode_Translator.binary_gcode_to_gcode(file)
+            if not file:
+                sys.exit(666)
+        if file.endswith(".gcode") or file.endswith(".gx"):
+            if file.endswith(".gx"):
+                print("Extracting binary bmp from G-code file...")
+                Binary_GCode_Translator.extract_binary_picture_from_gx(file, "preview_gx.bmp")
+                print("binary bmp extracted.")
+            with open(file, "r", encoding="utf-8", errors="replace") as f:
+                translator = GCodeTranslator()
+                gcode_mapping = translator.init_mapping()
+                with open("output.txt", "w") as new_file:
+                    pass
+                with open("output.txt", "a", encoding="utf-8", errors="replace") as o:
+                    for line in f:
+                        result, _ = translator.explain_gcode_line(line, gcode_mapping)  # second parameter is a bool and not needed here
+                        if result and result.strip():
+                            o.write(result+"\n")
+                        translator.translated_line_to_dict(result)
+                translator.clean_str_from_dict()
+                dictList_for_converter = translator.sort_and_filter_dict(True)
+                print(dictList_for_converter)
+    else:
+        print("Please provide a valid GCode (gcode, bgcode, gx file.")
+        sys.exit(2)
+
+print("EOC reached")
