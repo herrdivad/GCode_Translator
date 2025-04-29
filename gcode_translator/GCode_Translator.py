@@ -2,9 +2,18 @@ import base64
 import os
 import sys
 
-import helper
-import Binary_GCode_Translator
-import GCode_Mapping
+try:
+    from . import helper
+except ImportError:
+    import helper  # fallback für standalone
+try:
+    from . import Binary_GCode_Translator
+except ImportError:
+    import Binary_GCode_Translator
+try:
+    from . import GCode_Mapping
+except ImportError:
+    import GCode_Mapping
 
 
 class GCodeTranslator:
@@ -174,11 +183,17 @@ class GCodeTranslator:
         return has_comment_structure and not_blacklisted
 
 
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python GCode_Translator.py <GCode file>")
-        sys.exit(1)
-    file = sys.argv[1]
+def use(file: str = None):
+    """
+    Process a G-code file either from CLI arguments or direct Python call.
+
+    :param file: Optional; path to the G-code file. If None, sys.argv[1] is used.
+    """
+    if file is None:
+        if len(sys.argv) != 2:
+            print("Usage: python -m gcode_translator.GCode_Translator <GCode file>")
+            sys.exit(1)
+        file = sys.argv[1]
     if os.path.isfile(file):
         if file.endswith(".bgcode"):
             file = Binary_GCode_Translator.binary_gcode_to_gcode(file)
@@ -196,9 +211,10 @@ if __name__ == "__main__":
                     pass
                 with open("output.txt", "a", encoding="utf-8", errors="replace") as o:
                     for line in f:
-                        result, _ = translator.explain_gcode_line(line, gcode_mapping)  # second parameter is a bool and not needed here
+                        result, _ = translator.explain_gcode_line(line,
+                                                                  gcode_mapping)  # second parameter is a bool and not needed here
                         if result and result.strip():
-                            o.write(result+"\n")
+                            o.write(result + "\n")
                         translator.translated_line_to_dict(result)
                 translator.clean_str_from_dict()
                 dictList_for_converter = translator.sort_and_filter_dict(True)
@@ -207,4 +223,7 @@ if __name__ == "__main__":
         print("Please provide a valid GCode (gcode, bgcode, gx file.")
         sys.exit(2)
 
-print("EOC reached")
+
+if __name__ == "__main__":
+    use()
+    print("EOC reached")

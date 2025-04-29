@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 David H
+Copyright (c) 2025 David Herrmann
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+### License Notice
+
+This project is licensed under the MIT License.
+
+It makes use of a separately compiled binary (`bgcode`), which is built from the
+[Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode), licensed under the GNU GPL v3.
+
+This external tool is **not included** in this repository's license, and users must comply
+with the GPL v3 when using or distributing the `bgcode` executable.

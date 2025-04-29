@@ -1,3 +1,4 @@
+import importlib.resources
 import os
 import stat
 import subprocess
@@ -34,15 +35,31 @@ def extract_picture_bytes_from_content(
     return picture_data, remaining_data
 
 
-def binary_gcode_to_gcode(bgcode, bgcode_binEXEC_path: str = "./bgcode"):
+def get_bgcode_executable_path():
+    with importlib.resources.path('gcode_translator', 'bgcode') as bgcode_path:
+        return str(bgcode_path)
+
+
+def binary_gcode_to_gcode(bgcode, bgcode_binEXEC_path=None):
     if not sys.platform.startswith("linux"):
         print("This script only works on Linux!")
         return None
-    print(bgcode)
-    make_executable(bgcode_binEXEC_path)
+
+    if not bgcode_binEXEC_path:
+        bgcode_binEXEC_path = get_bgcode_executable_path()
+
+    print(f"Using bgcode binary: {bgcode_binEXEC_path}")
+    print(f"Input file: {bgcode}")
+
+    # Make it executable
+    st = os.stat(bgcode_binEXEC_path)
+    os.chmod(bgcode_binEXEC_path, st.st_mode | 0o111)
+
     subprocess.run([bgcode_binEXEC_path, bgcode])
+
     file_path_gcode = bgcode[:-7] + ".gcode"
-    print(file_path_gcode)
+    print(f"Output file: {file_path_gcode}")
+
     return file_path_gcode
 
 
