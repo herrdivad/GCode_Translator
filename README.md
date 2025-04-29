@@ -21,7 +21,7 @@ It integrates a native C++ binary (`bgcode`) and uses web scraping to retrieve c
 ### 🛠 For local development:
 
 ```bash
-git clone https://github.com/YOURNAME/gcode-translator.git
+git clone https://github.com/herrdivad/GCode_Translator
 cd gcode-translator
 pip install -e .
 ```
@@ -29,7 +29,7 @@ pip install -e .
 ### 📦 Install directly via pip:
 
 ```bash
-pip install git+https://github.com/YOURNAME/gcode-translator.git
+pip install git+https://github.com/herrdivad/GCode_Translator
 ```
 
 ---
@@ -42,7 +42,7 @@ After installation, use the command:
 gcode-translator path/to/your/file.gcode
 ```
 
-> It processes the G-code file and outputs interpreted descriptions line by line.
+> It processes the G-code file and outputs interpreted descriptions line by line into a file named output.txt (overwrite!).
 
 ---
 
@@ -66,9 +66,9 @@ If there are complaints, I declare hereby, that I will remove the binary ASAP.
 You can also use it programmatically:
 
 ```python
-from gcode_translator.GCode_Translator import main
+from gcode_translator.GCode_Translator import use
 
-main("your_file.gcode")
+use("your_file.gcode")
 ```
 
 ---
