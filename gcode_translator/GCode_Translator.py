@@ -24,7 +24,7 @@ class GCodeTranslator:
         # print("Initializing GCode Translator")
 
     def init_mapping(self):
-        scraper = GCode_Mapping.GCode_Mapping()
+        scraper = GCode_Mapping.GCodeMapping()
         if scraper.gcode_type == GCode_Mapping.GCodeFlavor.GENERIC or scraper.gcode_type == GCode_Mapping.GCodeFlavor.MARLIN:
             scraper = GCode_Mapping.MarlinGcodeScraper()
         mapping = {}  # initialize as valid empty dic
