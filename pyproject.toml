@@ -7,7 +7,7 @@ name = "gcode-translator"
 version = "0.1.0"
 description = "A tool for translating and converting GCode and Binary GCode formats"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [
   { name = "David Herrmann", email = "david.herrmann@kit.edu" }
