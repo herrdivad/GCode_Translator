@@ -57,7 +57,7 @@ The `bgcode` Linux binary is included in the package and used automatically.
 `bgcode` was built from the official source code from 
 [Prusa3d](https://github.com/prusa3d/libbgcode) using the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.html.en).
 It is used as a subprocess, and it use agrees with the [GPL FAQ](https://www.gnu.org/licenses/gpl-faq.en.html#MereAggregation).
-If there are complaints, I declare hereby, that I will remove the binary ASAP.
+If there are complaints, I declare hereby, that I will remove the binary ASAP or change license.
 
 ---
 
@@ -70,6 +70,11 @@ from gcode_translator.GCode_Translator import use
 
 use("your_file.gcode")
 ```
+
+## Intended use in other projects 
+
+- [chemotion-converter-app](https://github.com/ComPlat/chemotion-converter-app) as part of the gcode_reader
+
 
 ---
 

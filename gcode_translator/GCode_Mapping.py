@@ -9,12 +9,12 @@ from enum import Enum, auto
 
 class GCodeFlavor(Enum):
     GENERIC = auto()
-    MARLIN = auto()
-    KLIPPER = auto()
+    MARLIN = auto() # currently in all use cases, MARLIN Firmware is used!
+    # KLIPPER = auto()
     # REPETIER = auto()
 
 
-class GCode_Mapping(ABC):
+class GCodeMapping(ABC):
     def __init__(self):
         self.gcode_type = GCodeFlavor.GENERIC
         # print("Initializing GCode Mapping for ...")
@@ -26,7 +26,7 @@ class GCode_Mapping(ABC):
         self.gcode_type = found_type
 
 
-class MarlinGcodeScraper(GCode_Mapping):
+class MarlinGcodeScraper(GCodeMapping):
     def __init__(self, url="https://marlinfw.org/meta/gcode/"):
         """
         Initializes a headless Chrome driver via Selenium
