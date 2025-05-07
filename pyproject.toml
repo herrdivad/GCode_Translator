@@ -14,7 +14,7 @@ authors = [
 ]
 dependencies = [
   "selenium",
-  "beautifulsoup4",
+  "beautifulsoup4"
 ]
 
 [project.scripts]
