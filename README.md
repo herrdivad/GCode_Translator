@@ -1,7 +1,10 @@
 # GCode Translator
 
 A powerful Python-based tool for reading, interpreting, and converting standard and binary G-code (`.bgcode`) files.  
-It integrates a native C++ binary (`bgcode`) and uses web scraping to retrieve command documentation from Marlin firmware resources.
+It integrates a native C++ binary (`bgcode`) and uses web scraping (3) to retrieve command documentation from Marlin firmware resources
+or a local (1) / package (2) marlin_mapping.json file.
+
+Using this order (1) > (2) > (3) in default **use() / CLI** mode!
 
 ---
 
@@ -10,7 +13,7 @@ It integrates a native C++ binary (`bgcode`) and uses web scraping to retrieve c
 - ✅ Translate raw G-code lines into human-readable explanations
 - ✅ Supports `.gcode`, `.bgcode`, and `.gx` formats
 - ✅ Integrates with native C++ converter (`bgcode`) for decoding binary formats
-- ✅ Automatically scrapes G/M-code documentation from Marlin's official site
+- ✅ Able to automatically scrapes G/M-code documentation from Marlin's official site or use a local one
 - ✅ Supports embedded thumbnails (base64 or binary)
 - ✅ CLI access via `gcode-translator` command
 
@@ -51,6 +54,7 @@ gcode-translator path/to/your/file.gcode
 This project uses the following packages:
 
 - [`selenium`](https://pypi.org/project/selenium/)
+  - selenium requires Chrome or Chromium installed on your system and be accessible in headless mode. Otherwise use this code with an offline mapping JSON file (should also be delivered by this Repo). 
 - [`beautifulsoup4`](https://pypi.org/project/beautifulsoup4/)
 
 The `bgcode` Linux binary is included in the package and used automatically.
@@ -87,6 +91,7 @@ gcode_translator/
 ├── GCode_Mapping.py             # G/M code mapping using web scraping
 ├── helper.py                    # Parser and helper functions
 ├── bgcode                       # Embedded C++ executable
+├── marlin_mapping.json          # Package marlin mapping file for systems without Internet connection
 ```
 
 ---

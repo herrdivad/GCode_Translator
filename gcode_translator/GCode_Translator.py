@@ -23,10 +23,10 @@ class GCodeTranslator:
         self.output_dict = {}
         # print("Initializing GCode Translator")
 
-    def init_mapping(self):
+    def init_mapping(self, url: str | None = None):
         scraper = GCode_Mapping.GCodeMapping()
         if scraper.gcode_type == GCode_Mapping.GCodeFlavor.GENERIC or scraper.gcode_type == GCode_Mapping.GCodeFlavor.MARLIN:
-            scraper = GCode_Mapping.MarlinGcodeScraper()
+            scraper = GCode_Mapping.MarlinGcodeScraper() if url is None else GCode_Mapping.MarlinGcodeScraper(url)
         mapping = {}  # initialize as valid empty dic
         try:
             mapping = scraper.fetch_gcode_mapping()
@@ -206,7 +206,7 @@ def use(file: str = None):
                 print("binary bmp extracted.")
             with open(file, "r", encoding="utf-8", errors="replace") as f:
                 translator = GCodeTranslator()
-                gcode_mapping = translator.init_mapping()
+                gcode_mapping = translator.init_mapping("local")
                 with open("output.txt", "w") as new_file:
                     pass
                 with open("output.txt", "a", encoding="utf-8", errors="replace") as o:
