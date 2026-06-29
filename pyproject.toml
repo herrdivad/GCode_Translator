@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gcode-translator = "gcode_translator.GCode_Translator:use"
+gcode-translator = "gcode_translator.GCode_Translator:main"
 
 [tool.setuptools]
 packages = ["gcode_translator"]

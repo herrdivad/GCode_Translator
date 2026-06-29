@@ -1,6 +1,8 @@
 import base64
+import logging
 import os
 import sys
+from dataclasses import dataclass
 
 try:
     from . import helper
@@ -15,13 +17,59 @@ try:
 except ImportError:
     import GCode_Mapping
 
+logger = logging.getLogger(__name__)
+
+# Sentinel used to tell "argument not supplied" apart from an explicit None.
+# Lets CLI mode default to writing files while library mode stays side-effect free.
+_UNSET = object()
+
+
+@dataclass
+class GCodeLine:
+    """Structured result of translating a single G-code line.
+
+    Replaces the former ``"G1: Linear Move | Parameter: X10"`` string that was
+    built and re-parsed elsewhere. The string form is only needed for the
+    human-readable file output and is produced on demand via ``output_text``.
+    """
+    raw: str                              # original, untouched line
+    cmd: str | None = None                # "G1" / "M104"; None for comments/blank lines
+    explanation: str | None = None        # mapping description, e.g. "Linear Move"
+    params: str = ""                       # raw parameter string ("True" when none)
+    inline_comment: str = ""              # text after ';' on a command line
+    is_comment: bool = False              # True for a meaningful standalone comment
+    text: str = ""                         # what to write to the output file ("" = nothing)
+    preview: bytes | None = None          # decoded embedded thumbnail (set on "; thumbnail end")
+
+    @property
+    def is_command(self) -> bool:
+        return self.cmd is not None
+
+    @property
+    def dict_key(self) -> str:
+        """Aggregation key, e.g. ``"G1: Linear Move"``.
+
+        An unknown command that carries an inline comment is surfaced as a
+        ``"Special command - <hint>"`` so it is not silently lost.
+        """
+        explanation = self.explanation
+        if explanation == "Unknown command" and self.inline_comment:
+            explanation = "Special command - " + self.inline_comment
+        return f"{self.cmd}: {explanation}"
+
+    @property
+    def dict_value(self) -> str:
+        """Aggregation value: parameters without any trailing inline comment."""
+        before_comment = self.params.split(";")[0].strip(" ,\t\n")
+        return before_comment if before_comment else "True"
+
 
 class GCodeTranslator:
-    def __init__(self):
+    def __init__(self, preview_path: str | None = None):
         self.line_is_a_picture = False
         self.picture_code = []
         self.output_dict = {}
-        # print("Initializing GCode Translator")
+        self.preview_path = preview_path
 
     def init_mapping(self, url: str | None = None):
         scraper = GCode_Mapping.GCodeMapping()
@@ -31,79 +79,60 @@ class GCodeTranslator:
         try:
             mapping = scraper.fetch_gcode_mapping()
         except Exception as e:
-            print("❌ Failed to fetch G-code mapping:", e)
+            logger.error("❌ Failed to fetch G-code mapping: %s", e)
         finally:
             scraper.close()
         return mapping
 
-    def explain_gcode_line(self, line_to_translate, mapping, preview_picture_needed=True, preview_pic_as_file=True) -> tuple[str, bool]:
+    def explain_gcode_line(self, line_to_translate, mapping, preview_picture_needed=True) -> GCodeLine:
         if line_to_translate.startswith("; thumbnail end"):
             self.line_is_a_picture = False
-            if preview_picture_needed and preview_pic_as_file:
-                self.transform_preview_picture()
-            return "", False
+            gline = GCodeLine(raw=line_to_translate)
+            if preview_picture_needed:
+                # Decode the collected base64 block; transform_preview_picture writes a
+                # file only if self.preview_path is set and returns the raw bytes either way.
+                gline.preview = self.transform_preview_picture()
+            return gline
         if line_to_translate.startswith("; thumbnail begin") or self.line_is_a_picture:
             if not self.line_is_a_picture:
                 self.picture_code = []
                 self.line_is_a_picture = True
             if preview_picture_needed:
                 self.extract_preview_picture(line_to_translate)
-            return "", False
+            return GCodeLine(raw=line_to_translate)
         blacklist = ["thumbnail", "base64", "preview", "width:", "height:", "layer", "type:", "time_elapsed:", "mesh:", "gimage", "simage",
                      "extrude_ratio:", "structure:", "support-"]  # if some important Comment or Metadata is missing, check this blacklist and adjust!
         if self.is_valid_comment(line_to_translate, blacklist):
-            return line_to_translate[1:200].strip(), True
+            return GCodeLine(raw=line_to_translate, is_comment=True, text=line_to_translate[1:200].strip())
         if line_to_translate.startswith(";") or line_to_translate.strip() == "":
-            return line_to_translate, False
+            return GCodeLine(raw=line_to_translate, text=line_to_translate.rstrip("\n"))
 
         parts = line_to_translate.strip().split()
         cmd = parts[0]
         params = parts[1:]
 
+        param_str = "True" if not params else " ".join(params)
+        inline_comment = param_str.split(";")[-1].strip() if ";" in param_str else ""
+
         if mapping is not None:
             explanation = mapping.get(cmd, "Unknown command")
-            param_str = "True" if not params else " ".join(params)
-            # if param_str == "True":
-                # print(f"{cmd}: {explanation} | Parameter: {param_str}")
-            return f"{cmd}: {explanation} | Parameter: {param_str}", False
         else:
-            param_str = "True" if not params else " ".join(params)
-            return f"{cmd}: Unknown mapping | Parameter: {param_str}", False
+            explanation = "Unknown mapping"
 
-    def translated_line_to_dict(self, translated_line):
-        if "|" in translated_line:
-            cmd = translated_line.split("|")[0].strip()
-            comment_hint = translated_line.split(";")[-1].strip() if ";" in translated_line else ""
-            if "Unknown command" in cmd and comment_hint:
-                cmd = cmd.replace("Unknown command", "Special command - " + comment_hint)
-            params = translated_line.split("|")[1].split(";")[0].strip(' ,\t\n')
-            if "Parameter:" in params:
-                param_parts = params.split(":", 1)
-                if len(param_parts) == 2 and param_parts[1].strip() == "":
-                    params += " True"
-            helper.add_to_dict_smart(self.output_dict, cmd, params)
+        gline = GCodeLine(raw=line_to_translate, cmd=cmd, explanation=explanation,
+                          params=param_str, inline_comment=inline_comment)
+        gline.text = f"{cmd}: {explanation} | Parameter: {param_str}"
+        return gline
 
-    def clean_str_from_dict(self, string_to_clean="Parameter:"):
+    def add_line_to_dict(self, gline: GCodeLine):
+        """Aggregate a translated command line into ``output_dict``.
+
+        Comments and blank lines are skipped; only real commands are collected.
+        Works directly on the structured fields — no string re-parsing.
         """
-        Removes a given substring from all values in the output_dict.
-        Works for both string values and lists of strings.
-
-        :param string_to_clean: The substring to remove from all values
-        """
-        for key in self.output_dict:
-            value = self.output_dict[key]
-
-            if isinstance(value, str):
-                # Clean substring from string
-                self.output_dict[key] = value.replace(string_to_clean, "").strip()
-
-            elif isinstance(value, list):
-                # Clean substring from each element in the list
-                cleaned_list = [
-                    v.replace(string_to_clean, "").strip() if isinstance(v, str) else v
-                    for v in value
-                ]
-                self.output_dict[key] = cleaned_list
+        if not gline.is_command:
+            return
+        helper.add_to_dict_smart(self.output_dict, gline.dict_key, gline.dict_value)
 
     def sort_and_filter_dict(self, lists_to_strings=False, should_sort=True, should_filter=True):
         if should_sort:
@@ -139,24 +168,31 @@ class GCodeTranslator:
 
     def get_preview_as_stream(self):
         if not self.picture_code:
-            print("⚠️ No preview image data found.")
+            logger.warning("⚠️ No preview image data found.")
             return None
 
         base64_data = "".join(self.picture_code)
         try:
             return base64.b64decode(base64_data)
         except Exception as e:
-            print(f"❌ Failed to decode preview image: {e}")
+            logger.error("❌ Failed to decode preview image: %s", e)
             return None
 
-    def transform_preview_picture(self):
+    def transform_preview_picture(self) -> bytes | None:
+        """Decode the collected thumbnail and return its raw bytes.
+
+        Writes the image to disk only when ``self.preview_path`` is set; otherwise
+        the bytes are returned for in-memory use (e.g. via ``GCodeLine.preview``)
+        without touching the filesystem.
+        """
         image_data = self.get_preview_as_stream()
         if not image_data:
-            return
-        pic_name = "preview.png"
-        with open(pic_name, "wb") as img_file:
-            img_file.write(image_data)
-        print(f"✅ Thumbnail saved as '{pic_name}'.")
+            return None
+        if self.preview_path:
+            with open(self.preview_path, "wb") as img_file:
+                img_file.write(image_data)
+            logger.info("✅ Thumbnail saved as '%s'.", self.preview_path)
+        return image_data
 
     def is_valid_comment(self, com_line: str, blacklist: list[str]) -> bool:
         """
@@ -183,47 +219,106 @@ class GCodeTranslator:
         return has_comment_structure and not_blacklisted
 
 
-def use(file: str = None):
+def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
+        lists_to_strings: bool = True, mapping_source: str = "local",
+        return_preview: bool = False):
     """
-    Process a G-code file either from CLI arguments or direct Python call.
+    Process a G-code file either from CLI arguments or a direct Python call.
 
-    :param file: Optional; path to the G-code file. If None, sys.argv[1] is used.
+    :param file: Path to the G-code file. If ``None``, ``sys.argv[1]`` is used (CLI mode).
+    :param output_txt_path: Where to write the human-readable per-line output.
+        Defaults to ``"output.txt"`` in CLI mode and to ``None`` (no file written)
+        when called as a library.
+    :param preview_path: Where to save an embedded thumbnail. Same CLI/library
+        defaulting as ``output_txt_path``; ``None`` disables writing the thumbnail
+        to disk (it can still be returned in memory, see ``return_preview``).
+    :param lists_to_strings: Whether list values in the result are stringified.
+    :param mapping_source: ``"local"`` (default), ``None`` for the live Marlin URL,
+        or a custom URL.
+    :param return_preview: If ``True``, return a ``(dict_list, previews)`` tuple where
+        ``previews`` is a list of the extracted thumbnail images as raw ``bytes`` (a file
+        may contain several). The pictures are decoded in memory without writing any file
+        unless ``preview_path`` is also set.
+    :return: The sorted/filtered ``[g_dict, m_dict, other_dict]`` list. When
+        ``return_preview`` is ``True``, a ``(list, previews)`` tuple instead.
     """
-    if file is None:
+    cli_mode = file is None
+
+    # Resolve side-effect defaults: write files in CLI mode, stay silent as a library.
+    if output_txt_path is _UNSET:
+        output_txt_path = "output.txt" if cli_mode else None
+    if preview_path is _UNSET:
+        preview_path = "preview.png" if cli_mode else None
+
+    # Decode thumbnails whenever the caller wants them returned OR wants them written.
+    want_preview = return_preview or (preview_path is not None)
+
+    if cli_mode:
         if len(sys.argv) != 2:
             print("Usage: python -m gcode_translator.GCode_Translator <GCode file>")
             sys.exit(1)
         file = sys.argv[1]
-    if os.path.isfile(file):
-        if file.endswith(".bgcode"):
-            file = Binary_GCode_Translator.binary_gcode_to_gcode(file)
-            if not file:
-                sys.exit(666)
-        if file.endswith(".gcode") or file.endswith(".gx"):
-            if file.endswith(".gx"):
-                print("Extracting binary bmp from G-code file...")
-                Binary_GCode_Translator.extract_binary_picture_from_gx(file, "preview_gx.bmp")
-                print("binary bmp extracted.")
-            with open(file, "r", encoding="utf-8", errors="replace") as f:
-                translator = GCodeTranslator()
-                gcode_mapping = translator.init_mapping("local")
-                with open("output.txt", "w") as new_file:
-                    pass
-                with open("output.txt", "a", encoding="utf-8", errors="replace") as o:
-                    for line in f:
-                        result, _ = translator.explain_gcode_line(line,
-                                                                  gcode_mapping)  # second parameter is a bool and not needed here
-                        if result and result.strip():
-                            o.write(result + "\n")
-                        translator.translated_line_to_dict(result)
-                translator.clean_str_from_dict()
-                dictList_for_converter = translator.sort_and_filter_dict(True)
-                print(dictList_for_converter)
-    else:
-        print("Please provide a valid GCode (gcode, bgcode, gx file.")
-        sys.exit(2)
+
+    if not os.path.isfile(file):
+        msg = "Please provide a valid GCode (gcode, bgcode, gx) file."
+        if cli_mode:
+            print(msg)
+            sys.exit(2)
+        raise FileNotFoundError(msg + f" Got: {file!r}")
+
+    if file.endswith(".bgcode"):
+        file = Binary_GCode_Translator.binary_gcode_to_gcode(file)
+        if not file:
+            raise RuntimeError("Binary G-code conversion failed (Linux + bgcode binary required).")
+
+    if not (file.endswith(".gcode") or file.endswith(".gx")):
+        raise ValueError(f"Unsupported file type: {file!r}")
+
+    previews = []
+
+    if file.endswith(".gx") and want_preview:
+        # Write the .bmp only when an output location is desired (preview_path set);
+        # otherwise just decode it into memory. extract_* returns None when the .gx
+        # carries no embedded BMP (e.g. plain-text G-code with a .gx extension).
+        gx_bmp_path = "preview_gx.bmp" if preview_path is not None else None
+        gx_preview = Binary_GCode_Translator.extract_binary_picture_from_gx(file, gx_bmp_path)
+        if gx_preview:
+            previews.append(gx_preview)
+            logger.info("Extracted embedded BMP thumbnail from .gx file.")
+
+    translator = GCodeTranslator(preview_path=preview_path)
+    gcode_mapping = translator.init_mapping(mapping_source)
+
+    out_file = open(output_txt_path, "w", encoding="utf-8", errors="replace") if output_txt_path else None
+    try:
+        with open(file, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                gline = translator.explain_gcode_line(
+                    line, gcode_mapping,
+                    preview_picture_needed=want_preview,
+                )
+                if out_file and gline.text and gline.text.strip():
+                    out_file.write(gline.text + "\n")
+                translator.add_line_to_dict(gline)
+                if gline.preview is not None:
+                    previews.append(gline.preview)
+    finally:
+        if out_file:
+            out_file.close()
+
+    result = translator.sort_and_filter_dict(lists_to_strings)
+    if return_preview:
+        return result, previews
+    return result
+
+
+def main():
+    """Console-script entry point (CLI). Configures logging, then delegates to use()."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    result = use()
+    print(result)
 
 
 if __name__ == "__main__":
-    use()
+    main()
     print("EOC reached")

@@ -67,13 +67,27 @@ If there are complaints, I declare hereby, that I will remove the binary ASAP or
 
 ## 🧠 Python API Usage
 
-You can also use it programmatically:
+You can also use it programmatically. `use()` **returns** the aggregated result
+(`[g_dict, m_dict, other_dict]`) and, when called as a library, is side-effect free
+(no files written, no stdout output):
 
 ```python
 from gcode_translator.GCode_Translator import use
 
-use("your_file.gcode")
+# Library mode: returns data, writes nothing.
+g_codes, m_codes, other = use("your_file.gcode")
+
+# Opt in to file output explicitly if you want it:
+result = use("your_file.gcode", output_txt_path="output.txt", preview_path="preview.png")
+
+# Get the embedded thumbnail(s) as raw bytes, without writing any file:
+dicts, previews = use("your_file.gcode", return_preview=True)
+for img in previews:          # a file may contain several thumbnails
+    ...                       # e.g. hand the bytes to a converter / PIL.Image
 ```
+
+> The CLI (`gcode-translator <file>`) keeps the old behavior and writes `output.txt`
+> and `preview.png` into the current directory.
 
 ## Intended use in other projects 
 

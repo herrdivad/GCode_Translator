@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 import re
@@ -10,6 +11,8 @@ from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from abc import ABC, abstractmethod
 from enum import Enum, auto
+
+logger = logging.getLogger(__name__)
 
 
 class GCodeFlavor(Enum):
@@ -79,7 +82,7 @@ class MarlinGcodeScraper(GCodeMapping):
             try:
                 # First try: in resource folder from local path
                 with open(self.local_json_map_path, "r", encoding="utf-8") as f:
-                    print("✅ Loaded G-code mapping from local file (non-package mode).")
+                    logger.info("✅ Loaded G-code mapping from local file (non-package mode).")
                     return json.load(f)
             except FileNotFoundError:
                 # Fallback for package usage: direct delivered file from package (No update / up-to-lateness guarantee)
@@ -87,10 +90,10 @@ class MarlinGcodeScraper(GCodeMapping):
                     # second try: in-package resource
                     with resources.files(self.mapping_resource_package).joinpath(self.mapping_resource_file).open("r",
                                                                                                                   encoding="utf-8") as f:
-                        print("✅ Loaded G-code mapping from installed package resource.")
+                        logger.info("✅ Loaded G-code mapping from installed package resource.")
                         return json.load(f)
                 except (FileNotFoundError, ModuleNotFoundError, AttributeError):
-                    print("⚠️ No local mapping found. Falling back to web scraping...")
+                    logger.warning("⚠️ No local mapping found. Falling back to web scraping...")
                     self._init_driver()
 
         # Case 2: Scrape using Selenium
@@ -102,7 +105,7 @@ class MarlinGcodeScraper(GCodeMapping):
                 "✅ make sure to get an offline / local 'resources/marlin_mapping.json' file from the Repo or dev system *and* use this code only in url='local' (default) mode."
             )
 
-        print("🌐 Scraping Marlin G-code documentation...")
+        logger.info("🌐 Scraping Marlin G-code documentation...")
         self.driver.get(self.url)
         time.sleep(3)  # wait for JavaScript to render content
         html = self.driver.page_source
@@ -139,9 +142,9 @@ class MarlinGcodeScraper(GCodeMapping):
             self.local_json_map_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.local_json_map_path, "w", encoding="utf-8") as f:
                 json.dump(gcode_map, f, indent=2)
-                print("💾 Saved scraped mapping as local JSON.")
+                logger.info("💾 Saved scraped mapping as local JSON.")
         except Exception as e:
-            print(f"⚠️ Could not save local mapping: {e}")
+            logger.warning("⚠️ Could not save local mapping: %s", e)
 
         return gcode_map
 
