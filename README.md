@@ -86,6 +86,11 @@ for img in previews:          # a file may contain several thumbnails
     ...                       # e.g. hand the bytes to a converter / PIL.Image
 ```
 
+The result is `[g_dict, m_dict, other_dict]`: G-commands, M-commands, and everything else.
+Slicer metadata written as `; key = value` or `; key: value` comments (e.g.
+`temperature`, `filament_type`, `nozzle_diameter`) is collected into `other_dict`, so the
+converter can read print settings that have no direct G/M-command equivalent.
+
 > The CLI (`gcode-translator <file>`) keeps the old behavior and writes `output.txt`
 > and `preview.png` into the current directory.
 

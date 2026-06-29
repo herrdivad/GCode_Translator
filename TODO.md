@@ -44,6 +44,10 @@ Robustheit und Code-Hygiene**.
 | LIB-2 | 🟠 Mittel | Vorschaubild als `bytes` in `GCodeLine` führen + optional aus `use()` zurückgeben | mittel  | ✅ erledigt |
 | BUG-8 | 🟠 Mittel | `.gx`-Bildextraktion an `preview_path` koppeln (Silent-Modus-Leak)  | klein   | ✅ erledigt |
 | BUG-4 | 🟠 Mittel | `.gx`-Bildextraktion: BMP-Header auswerten statt fixer Offsets       | klein   | ✅ erledigt |
+| FEAT-1| 🟠 Mittel | `; key = value` / `; key: value`-Metadaten in `other_dict` aufnehmen | mittel  | ✅ erledigt |
+| BUG-5 | 🟠 Mittel | Blacklist: sinnvolle `=`-Settings nicht mehr fälschlich verwerfen    | klein   | ✅ erledigt |
+| FEAT-2| 🟠 Mittel | Hochfrequente Befehle nicht als Riesen-Liste sammeln (Dedup/Zählung) | mittel  | offen |
+| BUG-9 | 🟠 Mittel | Inline-Kommentar vom Befehls-Token trennen; Special/Unknown-Semantik | klein   | ✅ erledigt |
 | TEST-1| 🟠 Mittel | pytest-Suite mit `exFiles/`                                          | mittel  |
 | BUG-1 | 🟠 Mittel | Toten `resources/`-Pfad fixen                                       | klein   |
 | BUG-2 | 🟠 Mittel | `subprocess` mit `check=True` + Existenzprüfung der Ausgabedatei     | klein   |
@@ -101,6 +105,58 @@ Bisher ließ sich das Vorschaubild nur als Datei (`preview.png`) gewinnen; ein K
 
 **Akzeptanzkriterium:** `dicts, imgs = use("datei.gcode", return_preview=True)` liefert die
 Bilddaten als `bytes`, ohne dass eine Datei entsteht (verifiziert).
+
+---
+
+### FEAT-1 — Slicer-Metadaten (`key = value` / `key: value`) in `other_dict` 🟠 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Translator.py`
+
+Deklarative Metadaten wie `; temperature = 220`, `; filament_type = PLA` oder `; nozzle_diameter = 0.4`
+landeten bisher gar nicht im Ergebnis-Dict (sie sind keine G/M-Befehle) — gerade Werte ohne
+Befehlsäquivalent gingen für den Converter komplett verloren. Umgesetzt:
+
+- [x] `GCodeLine` um `meta_key`/`meta_value` (+ Property `is_metadata`) erweitert.
+- [x] Innerhalb des „sinnvoller Kommentar"-Zweigs erkennt `explain_gcode_line` über
+      `_META_PAIR_RE` Paare der Form `; key = value` **oder** `; key: value`.
+- [x] **Abgrenzung gegen Rauschen:** Wert muss nicht-leer sein (`; design parameters:` bleibt
+      Kommentar); die bestehende Blacklist fängt Per-Layer-Marker (`;LAYER:`, `;HEIGHT:`,
+      `; end of layer_num:` …) ab; Single-Letter-Keys (`;Z:0.2`, `; T = 5`) werden über
+      `_META_MIN_KEY_LEN = 2` ausgeschlossen (G-Code-Achsen-Marker, kein Setting).
+- [x] Paare werden in `meta_dict` gesammelt und in `sort_and_filter_dict` **immer** in
+      `other_dict` einsortiert (unabhängig vom Anfangsbuchstaben des Keys).
+
+**Verifiziert:** PrusaSlicer-Config wird vollständig erfasst (297 Einträge inkl.
+`temperature`, `bed_temperature`, `filament_type`, `nozzle_diameter`); `g_dict`/`m_dict` bleiben
+byte-identisch zur Vorversion; `;Z:`-Per-Layer-Marker landen **nicht** im Dict.
+
+**Nachtrag:** Die ursprünglich hier vermerkte Einschränkung (Settings mit Teilwort `layer` gingen
+verloren) wurde mit **BUG-5** behoben — `=`-Settings umgehen jetzt die Blacklist.
+
+---
+
+### FEAT-2 — Hochfrequente Befehle nicht als Riesen-Liste sammeln 🟠
+**Datei:** `gcode_translator/GCode_Translator.py` (`add_line_to_dict`), `gcode_translator/helper.py`
+(`add_to_dict_smart`)
+
+`add_to_dict_smart` sammelt **jedes** Vorkommen eines Befehls als Listenelement (Duplikate erlaubt).
+Bei hochfrequenten Befehlen ohne G/M-Mapping (z. B. Klipper-Makros wie `SET_VELOCITY_LIMIT`,
+`EXCLUDE_OBJECT_START/END`) entstehen so riesige Listen — in der Datei
+`4color_necroDragon_PLA_0.2_3h39m58s.gcode` z. B. **59 825** Elemente unter einem einzigen
+`other_dict`-Key. Das bläht Rückgabe/`output.txt` auf und ist für den Converter kaum nutzbar.
+
+Hinweis: Betrifft genauso die regulären Bewegungsbefehle (`G1: Linear Move` hatte dort ~579 000
+Parameter-Einträge) — das ist dasselbe Aggregationsmuster.
+
+Mögliche Ansätze (zu entscheiden):
+- [ ] Werte pro Key **deduplizieren** (Menge statt Liste), optional mit Häufigkeitszähler
+      (`{value: count}`).
+- [ ] Obergrenze pro Key (Top-N) mit explizitem `log()`-Hinweis auf Trunkierung (kein stilles Kürzen).
+- [ ] Für reine Bewegungsbefehle (`G0/G1/G2/G3`) ggf. nur Aggregat (Anzahl, Achsen-Wertebereiche)
+      statt aller Parameter.
+- [ ] Verhalten konfigurierbar machen (Default abwärtskompatibel?).
+
+**Kontext:** Aufgekommen beim necroDragon-Test im Rahmen von BUG-5; rein vorbestehendes
+Aggregationsverhalten, unabhängig von [[FEAT-1]]/BUG-5.
 
 ---
 
@@ -173,12 +229,57 @@ generalisierte nicht — bei einer Text-`.gx` (z. B. `modern_Flashforge_Ninetale
 **Verifiziert:** Auto-Erkennung ist byte-identisch zur alten fixen Extraktion *und* zur
 mitgelieferten Referenz-`.bmp`; Text-`.gx` liefert sauber `None`.
 
-### BUG-5 — Fragile Kommentar-Blacklist 🟢
-**Datei:** `gcode_translator/GCode_Translator.py:52` (`is_valid_comment`)
+### BUG-9 — Inline-Kommentar am Befehl + Special/Unknown-Semantik 🟠 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Translator.py` (`explain_gcode_line`, `GCodeLine.dict_key/dict_value`)
 
-Substring-Matching: `"layer"` matcht z. B. auch „multilayer", `"type:"` matcht jedes Vorkommen.
+`M84; disable motors` (Semikolon **ohne** Leerzeichen am Befehl) erzeugte das Token `M84;`, das
+kein Mapping trifft → kaputter/uneinheitlicher Key (`M84;: Unknown command`), während
+`M84 ; disable motors` einen anderen Key ergab. Umgesetzt:
 
-- [ ] Wort-/Präfix-genaues Matching statt `in`-Substring-Prüfung.
+- [x] Inline-Kommentar wird per `partition(";")` **vor** dem Tokenisieren abgetrennt → `cmd` ist
+      immer sauber (`M84`), unabhängig vom Leerzeichen-Stil.
+- [x] `explanation` ist jetzt `None`, wenn kein Mapping-Treffer existiert (statt des Sentinels
+      `"Unknown command"`/`"Unknown mapping"`) — klare Unterscheidung.
+- [x] **Neue Schlüssel-Semantik** (wie vom Nutzer vorgegeben):
+      - Mapping-Treffer → `"<cmd>: <Beschreibung>"`, Value = Parameter.
+      - Kein Mapping, **aber** Erklärung (inline-Kommentar) → Key `"<cmd>: Special command"`,
+        **Value = die Erklärung** (z. B. `M84: Special command` → `disable motors`).
+      - Kein Mapping **und** keine Erklärung → Key `"<cmd>: Unknown command"`, Value = Parameter.
+- [x] Die `output.txt`-Zeile behält die Erklärung lesbar inline
+      (`M84: Special command - disable motors | Parameter: True`).
+
+**Verifiziert (necroDragon):** `M84: Special command` = `disable motors`; `T0/T1/T2: Special command`
+(mit „change extruder"), `T3: Unknown command` (ohne); `SET_VELOCITY_LIMIT`/`EXCLUDE_OBJECT_*:
+Unknown command`; `g_dict` (bekannte Befehle) byte-identisch zur Vorversion.
+
+**Edge-Case:** Bei einem Special command mit *zusätzlichen* echten Parametern (`M998 S1 ; custom`)
+wird die Erklärung als Value priorisiert (`custom`); die Parameter bleiben in `output.txt` sichtbar.
+
+### BUG-5 — Fragile Kommentar-Blacklist 🟠 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Translator.py` (`explain_gcode_line`)
+
+Die Substring-Blacklist (`"layer"`) verwarf auch sinnvolle Settings mit Teilwort `layer`
+(z. B. `layer_height`, `first_layer_temperature` — in einer realen Datei **56 Stück**).
+
+**Erkenntnis aus den Beispieldateien:** Echte Slicer-Settings nutzen `=`; das Per-Layer-Rauschen
+(`;LAYER:5`, `;HEIGHT:0.2`, `; end of layer_num: …` — bis zu 362×/Datei) nutzt `:` oder gar keinen
+Separator. Reines Umstellen der Blacklist auf Wortgrenzen würde `layer_num` **nicht** von
+`layer_height` trennen. Daher gewählter, robusterer Ansatz:
+
+- [x] **`=`-Paare umgehen die Blacklist** (`_META_EQ_RE`) — zuverlässige Settings werden immer als
+      Metadaten erfasst, auch mit Teilwort `layer`.
+- [x] **`:`-Paare unterliegen weiter der (unveränderten) Blacklist** (`_META_COLON_RE`) — dort lebt
+      das Per-Layer-Rauschen; Leerzeichen im Key bleiben erlaubt, sodass `; Filament used: 1.2m`
+      durchkommt, `; end of layer_num: …` aber von „layer" geblockt wird.
+
+**Verifiziert (necroDragon):** `other_dict` 491 → 576; **70** `layer`-Settings jetzt erfasst
+(`layer_height=0.2`, `first_layer_temperature=230`, `total_layers=328`, `first_layer_bed_temperature=55` …);
+**kein** `;LAYER:`/`;HEIGHT:`/`end of layer_num`/`AFTER_LAYER_CHANGE` im Dict; `g_dict`/`m_dict`
+unverändert (einzige Abweichung zur HEAD-Version: ein vorher durch den String-Roundtrip-Bug
+zerstörter `M84;`-Key ist jetzt sauber — eine ARCH-1-Bereinigung).
+
+**Hinweis:** `is_valid_comment` selbst nutzt weiterhin Substring-Matching; das ist jetzt aber nur
+noch für `:`-Zeilen relevant (gewollt, da dort das Rauschen sitzt).
 
 ### BUG-6 — Stille Trunkierung von Kommentaren 🟢
 **Datei:** `gcode_translator/GCode_Translator.py:55`

@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass
 
@@ -18,6 +19,21 @@ except ImportError:
     import GCode_Mapping
 
 logger = logging.getLogger(__name__)
+
+# Metadata comments come in two shapes:
+#   "; key = value"  -> a slicer setting. These are reliable, so they are captured
+#                       even when the comment blacklist would reject the key (e.g.
+#                       "layer_height", "first_layer_temperature"): real per-layer
+#                       noise never uses '='.
+#   "; key: value"   -> captured only if the line survives the comment blacklist,
+#                       which is where the per-layer ':' markers live (";LAYER:5",
+#                       ";HEIGHT:0.2", "; end of layer_num: ...").
+# In both cases the value must be non-empty (so "; design parameters:" and
+# "; modifier_phrase =" stay plain comments) and the key must have at least
+# _META_MIN_KEY_LEN characters (so axis markers like ";Z:0.2" are ignored).
+_META_EQ_RE = re.compile(r"^;\s*([A-Za-z][^=]*?)\s*=\s*(\S.*)$")
+_META_COLON_RE = re.compile(r"^;\s*([A-Za-z][\w. -]*?)\s*:\s*(\S.*)$")
+_META_MIN_KEY_LEN = 2  # config keys are descriptive; 1-char keys are G-code markers
 
 # Sentinel used to tell "argument not supplied" apart from an explicit None.
 # Lets CLI mode default to writing files while library mode stays side-effect free.
@@ -40,28 +56,45 @@ class GCodeLine:
     is_comment: bool = False              # True for a meaningful standalone comment
     text: str = ""                         # what to write to the output file ("" = nothing)
     preview: bytes | None = None          # decoded embedded thumbnail (set on "; thumbnail end")
+    meta_key: str | None = None           # key of a "; key = value" / "; key: value" pair
+    meta_value: str | None = None         # value of that metadata pair
 
     @property
     def is_command(self) -> bool:
         return self.cmd is not None
 
     @property
+    def is_metadata(self) -> bool:
+        return self.meta_key is not None
+
+    @property
     def dict_key(self) -> str:
         """Aggregation key, e.g. ``"G1: Linear Move"``.
 
-        An unknown command that carries an inline comment is surfaced as a
-        ``"Special command - <hint>"`` so it is not silently lost.
+        - Mapping hit            -> ``"<cmd>: <description>"``
+        - No mapping, but the line carries an inline comment (an explanation)
+                                 -> ``"<cmd>: Special command"`` (the comment is the value)
+        - No mapping and no comment
+                                 -> ``"<cmd>: Unknown command"``
         """
-        explanation = self.explanation
-        if explanation == "Unknown command" and self.inline_comment:
-            explanation = "Special command - " + self.inline_comment
-        return f"{self.cmd}: {explanation}"
+        if self.explanation:
+            label = self.explanation
+        elif self.inline_comment:
+            label = "Special command"
+        else:
+            label = "Unknown command"
+        return f"{self.cmd}: {label}"
 
     @property
     def dict_value(self) -> str:
-        """Aggregation value: parameters without any trailing inline comment."""
-        before_comment = self.params.split(";")[0].strip(" ,\t\n")
-        return before_comment if before_comment else "True"
+        """Aggregation value.
+
+        For a "Special command" (no mapping, but an inline comment) the comment is
+        the value. Otherwise the parameters ("True" when there are none).
+        """
+        if not self.explanation and self.inline_comment:
+            return self.inline_comment
+        return self.params if self.params else "True"
 
 
 class GCodeTranslator:
@@ -69,6 +102,7 @@ class GCodeTranslator:
         self.line_is_a_picture = False
         self.picture_code = []
         self.output_dict = {}
+        self.meta_dict = {}        # "; key = value" / "; key: value" pairs -> other_dict
         self.preview_path = preview_path
 
     def init_mapping(self, url: str | None = None):
@@ -100,36 +134,65 @@ class GCodeTranslator:
             if preview_picture_needed:
                 self.extract_preview_picture(line_to_translate)
             return GCodeLine(raw=line_to_translate)
+        stripped = line_to_translate.strip()
+        comment_text = line_to_translate[1:200].strip()
+
+        # "; key = value" is a reliable setting -> metadata, regardless of the blacklist.
+        eq = _META_EQ_RE.match(stripped)
+        if eq and len(eq.group(1).strip()) >= _META_MIN_KEY_LEN:
+            return GCodeLine(raw=line_to_translate, text=comment_text,
+                             meta_key=eq.group(1).strip(), meta_value=eq.group(2).strip())
+
         blacklist = ["thumbnail", "base64", "preview", "width:", "height:", "layer", "type:", "time_elapsed:", "mesh:", "gimage", "simage",
                      "extrude_ratio:", "structure:", "support-"]  # if some important Comment or Metadata is missing, check this blacklist and adjust!
         if self.is_valid_comment(line_to_translate, blacklist):
-            return GCodeLine(raw=line_to_translate, is_comment=True, text=line_to_translate[1:200].strip())
-        if line_to_translate.startswith(";") or line_to_translate.strip() == "":
+            # "; key: value" on a non-blacklisted comment is metadata (-> other_dict);
+            # anything else stays a plain comment that is only written to the output file.
+            colon = _META_COLON_RE.match(stripped)
+            if colon and len(colon.group(1).strip()) >= _META_MIN_KEY_LEN:
+                return GCodeLine(raw=line_to_translate, text=comment_text,
+                                 meta_key=colon.group(1).strip(), meta_value=colon.group(2).strip())
+            return GCodeLine(raw=line_to_translate, is_comment=True, text=comment_text)
+        if line_to_translate.startswith(";") or stripped == "":
             return GCodeLine(raw=line_to_translate, text=line_to_translate.rstrip("\n"))
 
-        parts = line_to_translate.strip().split()
+        # Split off an inline comment first, even when it is glued to the command
+        # ("M84; disable motors"), so the command token stays clean ("M84").
+        code_part, _, comment_part = stripped.partition(";")
+        inline_comment = comment_part.strip()
+        parts = code_part.split()
+        if not parts:
+            # Nothing but a comment remained -> treat as a plain comment line.
+            return GCodeLine(raw=line_to_translate, text=line_to_translate.rstrip("\n"))
         cmd = parts[0]
         params = parts[1:]
+        param_str = " ".join(params) if params else "True"
 
-        param_str = "True" if not params else " ".join(params)
-        inline_comment = param_str.split(";")[-1].strip() if ";" in param_str else ""
-
-        if mapping is not None:
-            explanation = mapping.get(cmd, "Unknown command")
-        else:
-            explanation = "Unknown mapping"
+        # explanation is the mapping description, or None when there is no match.
+        explanation = mapping.get(cmd) if mapping is not None else None
 
         gline = GCodeLine(raw=line_to_translate, cmd=cmd, explanation=explanation,
                           params=param_str, inline_comment=inline_comment)
-        gline.text = f"{cmd}: {explanation} | Parameter: {param_str}"
+        # Human-readable label for the output file keeps the explanation inline.
+        if explanation:
+            label = explanation
+        elif inline_comment:
+            label = f"Special command - {inline_comment}"
+        else:
+            label = "Unknown command"
+        gline.text = f"{cmd}: {label} | Parameter: {param_str}"
         return gline
 
     def add_line_to_dict(self, gline: GCodeLine):
-        """Aggregate a translated command line into ``output_dict``.
+        """Aggregate a translated line into the result dictionaries.
 
-        Comments and blank lines are skipped; only real commands are collected.
-        Works directly on the structured fields — no string re-parsing.
+        Commands go to ``output_dict`` (later split into G/M/other); metadata pairs
+        go to ``meta_dict`` (always routed into ``other_dict``). Plain comments and
+        blank lines are skipped. Works directly on the structured fields.
         """
+        if gline.is_metadata:
+            helper.add_to_dict_smart(self.meta_dict, gline.meta_key, gline.meta_value)
+            return
         if not gline.is_command:
             return
         helper.add_to_dict_smart(self.output_dict, gline.dict_key, gline.dict_value)
@@ -158,9 +221,13 @@ class GCodeTranslator:
                 else:
                     other_dict[key] = str(value) if lists_to_strings else value
 
+            # Metadata pairs always belong in other_dict, regardless of their key.
+            for key, value in self.meta_dict.items():
+                other_dict[key] = str(value) if lists_to_strings else value
+
             return [g_dict, m_dict, other_dict]
 
-        return [self.output_dict]
+        return [{**self.output_dict, **self.meta_dict}]
 
     def extract_preview_picture(self, line_to_translate):
         if not line_to_translate.startswith("; thumbnail"):
