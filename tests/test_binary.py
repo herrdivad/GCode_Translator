@@ -1,4 +1,7 @@
-"""Tests for .gx BMP extraction (BUG-4) and the BMP locator."""
+"""Tests for .gx BMP extraction (BUG-4), the BMP locator, and bgcode conversion (BUG-2)."""
+import subprocess
+
+import gcode_translator.Binary_GCode_Translator as B
 from gcode_translator.Binary_GCode_Translator import (
     extract_binary_picture_from_gx,
     _locate_embedded_bmp,
@@ -37,3 +40,51 @@ def test_writes_file_only_when_output_path_given(tmp_path):
     data = extract_binary_picture_from_gx(str(BINARY_GX), str(out))
     assert out.exists()
     assert out.read_bytes() == data
+
+
+# --- BUG-2: binary_gcode_to_gcode error handling (mocked, no real binary needed) ---
+
+def _stub_binary(monkeypatch):
+    """Make the binary lookup + chmod no-ops so only the conversion logic is tested."""
+    monkeypatch.setattr(B.sys, "platform", "linux")
+    monkeypatch.setattr(B, "get_bgcode_executable_path", lambda: "bgcode-dummy")
+    monkeypatch.setattr(B, "make_executable", lambda path: None)
+
+
+def test_bgcode_non_linux_returns_none(monkeypatch):
+    monkeypatch.setattr(B.sys, "platform", "win32")
+    assert B.binary_gcode_to_gcode("model.bgcode") is None
+
+
+def test_bgcode_conversion_failure_returns_none(tmp_path, monkeypatch):
+    _stub_binary(monkeypatch)
+
+    def boom(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, "bgcode")
+    monkeypatch.setattr(B.subprocess, "run", boom)
+
+    src = tmp_path / "model.bgcode"
+    src.write_bytes(b"\x00")
+    assert B.binary_gcode_to_gcode(str(src)) is None
+
+
+def test_bgcode_missing_output_returns_none(tmp_path, monkeypatch):
+    _stub_binary(monkeypatch)
+    monkeypatch.setattr(B.subprocess, "run", lambda *a, **k: None)  # "succeeds", writes nothing
+
+    src = tmp_path / "model.bgcode"
+    src.write_bytes(b"\x00")
+    assert B.binary_gcode_to_gcode(str(src)) is None  # .gcode was never created
+
+
+def test_bgcode_success_returns_output_path(tmp_path, monkeypatch):
+    _stub_binary(monkeypatch)
+    out = tmp_path / "model.gcode"
+
+    def fake_run(*args, **kwargs):
+        out.write_text("G1 X1\n")  # simulate the binary producing the .gcode
+    monkeypatch.setattr(B.subprocess, "run", fake_run)
+
+    src = tmp_path / "model.bgcode"
+    src.write_bytes(b"\x00")
+    assert B.binary_gcode_to_gcode(str(src)) == str(out)

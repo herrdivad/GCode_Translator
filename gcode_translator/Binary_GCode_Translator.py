@@ -103,6 +103,11 @@ def get_bgcode_executable_path():
 
 
 def binary_gcode_to_gcode(bgcode, bgcode_binEXEC_path=None):
+    """Convert a Prusa ``.bgcode`` file to ``.gcode`` via the bundled native binary.
+
+    Returns the path to the produced ``.gcode`` file, or ``None`` if the platform is
+    unsupported, the conversion fails, or the expected output file is not created.
+    """
     if not sys.platform.startswith("linux"):
         logger.error("This script only works on Linux!")
         return None
@@ -113,15 +118,20 @@ def binary_gcode_to_gcode(bgcode, bgcode_binEXEC_path=None):
     logger.info("Using bgcode binary: %s", bgcode_binEXEC_path)
     logger.info("Input file: %s", bgcode)
 
-    # Make it executable
-    st = os.stat(bgcode_binEXEC_path)
-    os.chmod(bgcode_binEXEC_path, st.st_mode | 0o111)
+    make_executable(bgcode_binEXEC_path)
 
-    subprocess.run([bgcode_binEXEC_path, bgcode])
+    try:
+        subprocess.run([bgcode_binEXEC_path, bgcode], check=True)
+    except (subprocess.CalledProcessError, OSError) as e:
+        logger.error("❌ bgcode conversion failed: %s", e)
+        return None
 
     file_path_gcode = bgcode[:-7] + ".gcode"
-    logger.info("Output file: %s", file_path_gcode)
+    if not os.path.isfile(file_path_gcode):
+        logger.error("❌ bgcode reported success but the output file is missing: %s", file_path_gcode)
+        return None
 
+    logger.info("Output file: %s", file_path_gcode)
     return file_path_gcode
 
 

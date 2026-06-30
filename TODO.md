@@ -50,7 +50,7 @@ Robustheit und Code-Hygiene**.
 | BUG-9 | 🟠 Mittel | Inline-Kommentar vom Befehls-Token trennen; Special/Unknown-Semantik | klein   | ✅ erledigt |
 | TEST-1| 🟠 Mittel | pytest-Suite mit `exFiles/`                                          | mittel  | ✅ erledigt |
 | BUG-1 | 🟠 Mittel | Mapping-Pfade vereinheitlichen: Paket-Default + User-Cache          | klein   | ✅ erledigt |
-| BUG-2 | 🟠 Mittel | `subprocess` mit `check=True` + Existenzprüfung der Ausgabedatei     | klein   |
+| BUG-2 | 🟠 Mittel | `subprocess` mit `check=True` + Existenzprüfung der Ausgabedatei     | klein   | ✅ erledigt |
 | HYG-1 | 🟢 Niedrig| Repo aufräumen (`.gitignore`, Artefakte entfernen)                  | klein   |
 | SCRP-1| 🟢 Niedrig| Selenium → optionales Extra; `time.sleep` → `WebDriverWait`         | klein   |
 
@@ -199,13 +199,18 @@ zudem oft read-only bei installiertem Paket). Vereinheitlicht entlang des üblic
 **Verifiziert:** Cache-Pfad `~/.cache/gcode-translator/marlin_mapping.json`; ohne Cache lädt es
 korrekt 257 Einträge aus der Paket-Ressource (2 neue Tests in `test_mapping.py`).
 
-### BUG-2 — `binary_gcode_to_gcode` ohne Fehlerprüfung 🟠
+### BUG-2 — `binary_gcode_to_gcode` ohne Fehlerprüfung 🟠 ✅ ERLEDIGT (2026-06-29)
 **Datei:** `gcode_translator/Binary_GCode_Translator.py` (`binary_gcode_to_gcode`)
 
-- [ ] `subprocess.run(...)` mit `check=True` aufrufen (bei Fehlschlag wird aktuell trotzdem ein
-      `.gcode`-Pfad zurückgegeben, der evtl. nicht existiert).
-- [ ] Existenz der erzeugten `.gcode`-Datei vor dem Rückgeben prüfen.
-- [ ] `chmod` nicht bei jedem Aufruf neu setzen (einmalig genügt).
+- [x] `subprocess.run(...)` mit `check=True`; `CalledProcessError`/`OSError` werden gefangen und
+      führen zu `return None` (statt eines `.gcode`-Pfads, der evtl. nicht existiert).
+- [x] Existenz der erzeugten `.gcode`-Datei (`os.path.isfile`) vor dem Rückgeben geprüft → sonst
+      `None` (z. B. wenn der Konverter „Erfolg" meldet, aber nichts schreibt).
+- [x] Inline-`chmod` durch die vorhandene `make_executable()`-Funktion ersetzt (DRY).
+- [x] Docstring ergänzt; `use()` behandelt `None` bereits via `RuntimeError`.
+
+**Verifiziert:** 4 Tests in `test_binary.py` (gemockt, ohne echtes Binary): non-Linux → `None`,
+`CalledProcessError` → `None`, fehlende Ausgabedatei → `None`, Erfolg → Ausgabepfad.
 
 ### BUG-3 — `.gx` wird als UTF-8-Text gelesen 🟠
 **Datei:** `gcode_translator/GCode_Translator.py:207`
@@ -331,15 +336,16 @@ Es gab einen `exFiles/`-Ordner mit vielen Beispielen, aber **keine Tests**. Umge
 
 - [x] `pytest` als optionale Dev-Abhängigkeit (`[project.optional-dependencies] dev`) +
       `[tool.pytest.ini_options] testpaths = ["tests"]` in `pyproject.toml`.
-- [x] **59 Tests** in `tests/` (alle grün; inkl. `test_mapping.py` (2) — **BUG-1** Cache/Paket-Default):
+- [x] **63 Tests** in `tests/` (alle grün; inkl. `test_mapping.py` (2) — **BUG-1** Cache/Paket-Default):
       - `test_helper.py` (4) — `add_to_dict_smart` (String→Liste, Duplikate).
       - `test_explain_line.py` (20) — Befehle, **BUG-9** (Special/Unknown, `;` am Token),
         **FEAT-1** (`=`/`:`-Paare, leere Werte, Single-Letter), **BUG-5** (`layer`-Settings rein,
         `:`-Rauschen raus), `is_valid_comment`. *(Inline-Strings + Mini-Mapping.)*
       - `test_aggregation.py` (15) — G/M/other-Split, Metadaten→`other_dict`, Sortierung,
         **FEAT-2** (`compact`/`count`/`full`, Achsen-Bereiche).
-      - `test_binary.py` (5) — **BUG-4** (`_locate_embedded_bmp`, Auto-Detect == Referenz-BMP,
-        Text-`.gx`→None, Override). *(Echte `.gx`/`.bmp`.)*
+      - `test_binary.py` (9) — **BUG-4** (`_locate_embedded_bmp`, Auto-Detect == Referenz-BMP,
+        Text-`.gx`→None, Override; echte `.gx`/`.bmp`) + **BUG-2** (`binary_gcode_to_gcode`
+        Fehlerpfade, gemockt).
       - `test_use.py` (12) — **LIB-1** (Rückgabe, keine Dateien, stumm, Exceptions), **LIB-2**
         (`return_preview`-bytes, keine Datei), **BUG-8** (`.gx`-Silent-Leak), **FEAT-2**
         (ungültiger Modus → `ValueError`). *(Echte kleine Dateien.)*
