@@ -46,9 +46,9 @@ Robustheit und Code-Hygiene**.
 | BUG-4 | 🟠 Mittel | `.gx`-Bildextraktion: BMP-Header auswerten statt fixer Offsets       | klein   | ✅ erledigt |
 | FEAT-1| 🟠 Mittel | `; key = value` / `; key: value`-Metadaten in `other_dict` aufnehmen | mittel  | ✅ erledigt |
 | BUG-5 | 🟠 Mittel | Blacklist: sinnvolle `=`-Settings nicht mehr fälschlich verwerfen    | klein   | ✅ erledigt |
-| FEAT-2| 🟠 Mittel | Hochfrequente Befehle nicht als Riesen-Liste sammeln (Dedup/Zählung) | mittel  | offen |
+| FEAT-2| 🟠 Mittel | Aggregations-Modi `compact`/`count`/`full` über `use(aggregation=…)`  | mittel  | ✅ erledigt |
 | BUG-9 | 🟠 Mittel | Inline-Kommentar vom Befehls-Token trennen; Special/Unknown-Semantik | klein   | ✅ erledigt |
-| TEST-1| 🟠 Mittel | pytest-Suite mit `exFiles/`                                          | mittel  |
+| TEST-1| 🟠 Mittel | pytest-Suite mit `exFiles/`                                          | mittel  | ✅ erledigt |
 | BUG-1 | 🟠 Mittel | Toten `resources/`-Pfad fixen                                       | klein   |
 | BUG-2 | 🟠 Mittel | `subprocess` mit `check=True` + Existenzprüfung der Ausgabedatei     | klein   |
 | HYG-1 | 🟢 Niedrig| Repo aufräumen (`.gitignore`, Artefakte entfernen)                  | klein   |
@@ -134,28 +134,26 @@ verloren) wurde mit **BUG-5** behoben — `=`-Settings umgehen jetzt die Blackli
 
 ---
 
-### FEAT-2 — Hochfrequente Befehle nicht als Riesen-Liste sammeln 🟠
-**Datei:** `gcode_translator/GCode_Translator.py` (`add_line_to_dict`), `gcode_translator/helper.py`
-(`add_to_dict_smart`)
+### FEAT-2 — Aggregations-Modi für wiederholte Werte 🟠 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Translator.py` (`_aggregate_value`, `sort_and_filter_dict`, `use`)
 
 `add_to_dict_smart` sammelt **jedes** Vorkommen eines Befehls als Listenelement (Duplikate erlaubt).
-Bei hochfrequenten Befehlen ohne G/M-Mapping (z. B. Klipper-Makros wie `SET_VELOCITY_LIMIT`,
-`EXCLUDE_OBJECT_START/END`) entstehen so riesige Listen — in der Datei
-`4color_necroDragon_PLA_0.2_3h39m58s.gcode` z. B. **59 825** Elemente unter einem einzigen
-`other_dict`-Key. Das bläht Rückgabe/`output.txt` auf und ist für den Converter kaum nutzbar.
+Bei hochfrequenten Befehlen entstanden so riesige Listen — `SET_VELOCITY_LIMIT` z. B. **59 825**
+Elemente (bei nur **2** eindeutigen Werten), `G1` ~579 000 Parameter-Sätze. Umgesetzt: drei über
+`use(aggregation=…)` steuerbare Modi (Sammelphase unverändert; Reduktion erst bei der Ausgabe):
 
-Hinweis: Betrifft genauso die regulären Bewegungsbefehle (`G1: Linear Move` hatte dort ~579 000
-Parameter-Einträge) — das ist dasselbe Aggregationsmuster.
+- [x] **`compact`** (Default): eindeutige Werte (reihenfolge-erhaltende Menge, Einzelwert als Skalar);
+      **Bewegungsbefehle `G0`–`G3`** → pro-Achse `[min, max]`-Bereiche (`_axis_ranges`).
+- [x] **`count`**: `{value: Anzahl}` für **jeden** Befehl (Bewegungsbefehle eingeschlossen).
+- [x] **`full`**: jedes Vorkommen, Reihenfolge, Duplikate (bisheriges Verhalten).
+- [x] `_aggregate_value` ist eine **reine** Funktion (mutiert `self` nicht → idempotent, mehrfach
+      aufrufbar); ungültiger Modus → `ValueError` (in `use` und `_aggregate_value`).
+- [x] Doku in der README (englisch, mit Tabelle + `SET_VELOCITY_LIMIT`-Beispiel) und 8 neue Tests.
 
-Mögliche Ansätze (zu entscheiden):
-- [ ] Werte pro Key **deduplizieren** (Menge statt Liste), optional mit Häufigkeitszähler
-      (`{value: count}`).
-- [ ] Obergrenze pro Key (Top-N) mit explizitem `log()`-Hinweis auf Trunkierung (kein stilles Kürzen).
-- [ ] Für reine Bewegungsbefehle (`G0/G1/G2/G3`) ggf. nur Aggregat (Anzahl, Achsen-Wertebereiche)
-      statt aller Parameter.
-- [ ] Verhalten konfigurierbar machen (Default abwärtskompatibel?).
+**Verifiziert:** `compact`/`count` reduzieren `SET_VELOCITY_LIMIT` von 59 825 auf 2 Einträge;
+`g_dict`/`m_dict`-Keys unverändert; Default `compact` bricht keine bestehenden Tests.
 
-**Kontext:** Aufgekommen beim necroDragon-Test im Rahmen von BUG-5; rein vorbestehendes
+**Kontext:** Aufgekommen beim necroDragon-Test im Rahmen von BUG-5; war vorbestehendes
 Aggregationsverhalten, unabhängig von [[FEAT-1]]/BUG-5.
 
 ---
@@ -319,14 +317,35 @@ LIB-1-Versprechen „ohne Pfadangabe keine Dateien" widersprach. Umgesetzt:
 
 ## 4. Tests
 
-### TEST-1 — pytest-Suite mit `exFiles/` aufbauen 🟠
-Es gibt einen `exFiles/`-Ordner mit vielen Beispielen, aber **keine Tests**. Angesichts der vielen
-fragilen String-Parser ist das der größte Qualitätsgewinn.
+### TEST-1 — pytest-Suite mit `exFiles/` aufbauen 🟠 ✅ ERLEDIGT (2026-06-29)
+Es gab einen `exFiles/`-Ordner mit vielen Beispielen, aber **keine Tests**. Umgesetzt:
 
-- [ ] `pytest` als Dev-Abhängigkeit aufnehmen.
-- [ ] Tests für: Mapping-Lookup, Kommentar-Erkennung (`is_valid_comment`), Thumbnail-Decode,
-      Dict-Aggregation (`add_to_dict_smart`, `sort_and_filter_dict`).
-- [ ] Beispieldateien aus `exFiles/` als Fixtures nutzen.
+- [x] `pytest` als optionale Dev-Abhängigkeit (`[project.optional-dependencies] dev`) +
+      `[tool.pytest.ini_options] testpaths = ["tests"]` in `pyproject.toml`.
+- [x] **57 Tests** in `tests/` (alle grün):
+      - `test_helper.py` (4) — `add_to_dict_smart` (String→Liste, Duplikate).
+      - `test_explain_line.py` (20) — Befehle, **BUG-9** (Special/Unknown, `;` am Token),
+        **FEAT-1** (`=`/`:`-Paare, leere Werte, Single-Letter), **BUG-5** (`layer`-Settings rein,
+        `:`-Rauschen raus), `is_valid_comment`. *(Inline-Strings + Mini-Mapping.)*
+      - `test_aggregation.py` (15) — G/M/other-Split, Metadaten→`other_dict`, Sortierung,
+        **FEAT-2** (`compact`/`count`/`full`, Achsen-Bereiche).
+      - `test_binary.py` (5) — **BUG-4** (`_locate_embedded_bmp`, Auto-Detect == Referenz-BMP,
+        Text-`.gx`→None, Override). *(Echte `.gx`/`.bmp`.)*
+      - `test_use.py` (12) — **LIB-1** (Rückgabe, keine Dateien, stumm, Exceptions), **LIB-2**
+        (`return_preview`-bytes, keine Datei), **BUG-8** (`.gx`-Silent-Leak), **FEAT-2**
+        (ungültiger Modus → `ValueError`). *(Echte kleine Dateien.)*
+      - `test_integration.py` (2) — **echte reiche Dateien** end-to-end: PrusaSlicer
+        (`temperature`/`bed_temperature`/`nozzle_diameter`/`layer_height`, Befehle, kein Rauschen)
+        und AnycubicSlicer/4-Farben (`printer_model`, `filament_type`, 70 `layer`-Keys, `total_layers`,
+        `M84: Special command`, kein `LAYER`/`Z`). necroDragon ist als `@pytest.mark.slow` markiert.
+- [x] Logik gegen Inline-Strings (schnell, deterministisch), kleine + **reiche** echte Fixtures aus
+      `exFiles/` (`conftest.py`); `tmp_path`/`monkeypatch.chdir` isolieren alle Datei-Seiteneffekte.
+- [x] Helfer `conftest.requires(*paths)` → Tests, die echte Beispieldateien brauchen, **skippen**
+      (statt zu failen), wenn die Datei(en) fehlen. Verifiziert: ohne `exFiles/` → 33 passed,
+      16 skipped, 0 failures. Die reinen `tmp_path`-Tests laufen immer.
+
+**Ausführen:** `pip install -e ".[dev]"` dann `pytest` (~10 s, inkl. slow) bzw.
+`pytest -m "not slow"` (~7 s).
 
 ---
 

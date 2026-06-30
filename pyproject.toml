@@ -17,8 +17,17 @@ dependencies = [
   "beautifulsoup4"
 ]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [project.scripts]
 gcode-translator = "gcode_translator.GCode_Translator:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "slow: integration tests over large real files (deselect with '-m \"not slow\"')",
+]
 
 [tool.setuptools]
 packages = ["gcode_translator"]

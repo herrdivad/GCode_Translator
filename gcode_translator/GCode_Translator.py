@@ -35,6 +35,34 @@ _META_EQ_RE = re.compile(r"^;\s*([A-Za-z][^=]*?)\s*=\s*(\S.*)$")
 _META_COLON_RE = re.compile(r"^;\s*([A-Za-z][\w. -]*?)\s*:\s*(\S.*)$")
 _META_MIN_KEY_LEN = 2  # config keys are descriptive; 1-char keys are G-code markers
 
+# Value-aggregation strategies for repeated commands/metadata (see use(aggregation=...)).
+AGGREGATIONS = ("compact", "count", "full")
+_MOVE_COMMANDS = {"G0", "G1", "G2", "G3"}  # get axis-range treatment in "compact" mode
+_AXIS_TOKEN_RE = re.compile(r"^([A-Za-z])([-+]?\d*\.?\d+)$")  # e.g. "X158.835", "Z.25", "E-.8"
+
+
+def _axis_ranges(values) -> dict:
+    """Reduce a list of movement-command parameter sets to per-axis ``[min, max]``.
+
+    e.g. ["X10 Y5 F1800", "X20 Y2"] -> {"X": [10.0, 20.0], "Y": [2.0, 5.0], "F": [1800.0, 1800.0]}
+    Tokens that are not ``<letter><number>`` (e.g. the "True" placeholder) are ignored.
+    """
+    ranges = {}
+    for entry in values:
+        for token in str(entry).split():
+            match = _AXIS_TOKEN_RE.match(token)
+            if not match:
+                continue
+            axis = match.group(1).upper()
+            num = float(match.group(2))
+            if axis in ranges:
+                lo, hi = ranges[axis]
+                ranges[axis] = (min(lo, num), max(hi, num))
+            else:
+                ranges[axis] = (num, num)
+    return {axis: [lo, hi] for axis, (lo, hi) in sorted(ranges.items())}
+
+
 # Sentinel used to tell "argument not supplied" apart from an explicit None.
 # Lets CLI mode default to writing files while library mode stays side-effect free.
 _UNSET = object()
@@ -197,7 +225,33 @@ class GCodeTranslator:
             return
         helper.add_to_dict_smart(self.output_dict, gline.dict_key, gline.dict_value)
 
-    def sort_and_filter_dict(self, lists_to_strings=False, should_sort=True, should_filter=True):
+    def _aggregate_value(self, key: str, value, aggregation: str):
+        """Reduce a collected value (str or list of all occurrences) per strategy.
+
+        - ``full``    -> unchanged (every occurrence, duplicates kept).
+        - ``compact`` -> movement commands (G0–G3) become per-axis ``[min, max]`` ranges;
+                         everything else becomes its order-preserving set of unique values.
+        - ``count``   -> ``{value: occurrences}`` for every command (movement included).
+
+        Pure function: it does not mutate ``self`` (so it is safe to call repeatedly).
+        """
+        if aggregation == "full":
+            return value
+        values = value if isinstance(value, list) else [value]
+        if aggregation == "compact":
+            if key.split(":", 1)[0] in _MOVE_COMMANDS:
+                return _axis_ranges(values)
+            unique = list(dict.fromkeys(values))
+            return unique[0] if len(unique) == 1 else unique
+        if aggregation == "count":
+            counts = {}
+            for v in values:
+                counts[v] = counts.get(v, 0) + 1
+            return counts
+        raise ValueError(f"unknown aggregation {aggregation!r}; expected one of {AGGREGATIONS}")
+
+    def sort_and_filter_dict(self, lists_to_strings=False, should_sort=True, should_filter=True,
+                             aggregation="compact"):
         if should_sort:
             # noinspection PyUnusedLocal
             def my_gcode_sort_key(key_: str):
@@ -209,25 +263,30 @@ class GCodeTranslator:
 
             self.output_dict = dict(sorted(self.output_dict.items(), key=lambda item: my_gcode_sort_key(item[0])))
 
+        def render(key, value):
+            aggregated = self._aggregate_value(key, value, aggregation)
+            return str(aggregated) if lists_to_strings else aggregated
+
         if should_filter:
             g_dict = {}
             m_dict = {}
             other_dict = {}
             for key, value in self.output_dict.items():
                 if key.startswith("G"):
-                    g_dict[key] = str(value) if lists_to_strings else value
+                    g_dict[key] = render(key, value)
                 elif key.startswith("M"):
-                    m_dict[key] = str(value) if lists_to_strings else value
+                    m_dict[key] = render(key, value)
                 else:
-                    other_dict[key] = str(value) if lists_to_strings else value
+                    other_dict[key] = render(key, value)
 
             # Metadata pairs always belong in other_dict, regardless of their key.
             for key, value in self.meta_dict.items():
-                other_dict[key] = str(value) if lists_to_strings else value
+                other_dict[key] = render(key, value)
 
             return [g_dict, m_dict, other_dict]
 
-        return [{**self.output_dict, **self.meta_dict}]
+        return [{key: render(key, value)
+                 for key, value in {**self.output_dict, **self.meta_dict}.items()}]
 
     def extract_preview_picture(self, line_to_translate):
         if not line_to_translate.startswith("; thumbnail"):
@@ -288,7 +347,7 @@ class GCodeTranslator:
 
 def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
         lists_to_strings: bool = True, mapping_source: str = "local",
-        return_preview: bool = False):
+        return_preview: bool = False, aggregation: str = "compact"):
     """
     Process a G-code file either from CLI arguments or a direct Python call.
 
@@ -306,9 +365,16 @@ def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
         ``previews`` is a list of the extracted thumbnail images as raw ``bytes`` (a file
         may contain several). The pictures are decoded in memory without writing any file
         unless ``preview_path`` is also set.
+    :param aggregation: How repeated values per command/setting are reduced:
+        ``"compact"`` (default) keeps unique values and turns movement commands (G0–G3)
+        into per-axis ``[min, max]`` ranges; ``"count"`` produces ``{value: occurrences}``
+        for every command; ``"full"`` keeps every occurrence (duplicates included).
     :return: The sorted/filtered ``[g_dict, m_dict, other_dict]`` list. When
         ``return_preview`` is ``True``, a ``(list, previews)`` tuple instead.
     """
+    if aggregation not in AGGREGATIONS:
+        raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
+
     cli_mode = file is None
 
     # Resolve side-effect defaults: write files in CLI mode, stay silent as a library.
@@ -373,7 +439,7 @@ def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
         if out_file:
             out_file.close()
 
-    result = translator.sort_and_filter_dict(lists_to_strings)
+    result = translator.sort_and_filter_dict(lists_to_strings, aggregation=aggregation)
     if return_preview:
         return result, previews
     return result
