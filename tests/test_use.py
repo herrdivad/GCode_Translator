@@ -2,7 +2,7 @@
 import pytest
 
 from gcode_translator.GCode_Translator import use
-from conftest import SMALL_GCODE, BINARY_GX, requires
+from conftest import SMALL_GCODE, BINARY_GX, TEXT_GX, requires
 
 PNG_MAGIC = b"\x89PNG"
 
@@ -91,3 +91,15 @@ def test_gx_return_preview_gives_bmp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _, previews = use(str(BINARY_GX), return_preview=True)
     assert previews and previews[0][:2] == b"BM"
+
+
+@requires(BINARY_GX, TEXT_GX)
+def test_binary_gx_preamble_does_not_leak_garbage(tmp_path, monkeypatch):
+    """BUG-3: the binary header/BMP preamble must not be parsed as commands; the
+    binary and the plain-text variant of the same model yield identical commands."""
+    monkeypatch.chdir(tmp_path)
+    text_g, text_m, _ = use(str(TEXT_GX))
+    bin_g, bin_m, bin_other = use(str(BINARY_GX))
+    assert bin_g == text_g
+    assert bin_m == text_m
+    assert not any("\x00" in k or "�" in k for d in (bin_g, bin_m, bin_other) for k in d)

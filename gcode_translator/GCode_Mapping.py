@@ -1,33 +1,47 @@
 import json
 import logging
-import time
 import re
 from pathlib import Path
 import importlib.resources as resources
 
 from platformdirs import user_cache_dir
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from bs4 import BeautifulSoup
 from abc import ABC, abstractmethod
 from enum import Enum, auto
+
+# selenium and beautifulsoup4 are only needed for the (rare) web-scraping path and are
+# therefore an optional extra: pip install gcode-translator[scrape]. They are imported
+# lazily inside the scraping methods so the package works without them in local mode.
 
 logger = logging.getLogger(__name__)
 
 
 class GCodeFlavor(Enum):
     GENERIC = auto()
-    MARLIN = auto() # currently in all use cases, MARLIN Firmware is used!
+    MARLIN = auto()  # currently the only implemented flavor
+    # To add a firmware: add an entry here, implement a GCodeMapping subclass,
+    # and register it in SCRAPERS (bottom of this module).
     # KLIPPER = auto()
     # REPETIER = auto()
 
 
 class GCodeMapping(ABC):
+    """Abstract base for firmware-specific G-code mapping providers.
+
+    Subclass this for a new firmware flavor (implement ``fetch_gcode_mapping`` and,
+    if it holds resources, override ``close``) and register the subclass in
+    ``SCRAPERS`` so ``GCodeTranslator.init_mapping`` can select it by ``GCodeFlavor``.
+    """
+
     def __init__(self):
         self.gcode_type = GCodeFlavor.GENERIC
-        # print("Initializing GCode Mapping for ...")
 
-    def fetch_gcode_mapping(self):
+    @abstractmethod
+    def fetch_gcode_mapping(self) -> dict:
+        """Return the ``{code: description}`` mapping for this firmware flavor."""
+        ...
+
+    def close(self):
+        """Release any held resources (e.g. a browser session). No-op by default."""
         pass
 
     def set_type(self, found_type):
@@ -41,6 +55,7 @@ class MarlinGcodeScraper(GCodeMapping):
         If url="local", attempts to load from a local JSON file instead of scraping.
         """
         super().__init__()
+        self.gcode_type = GCodeFlavor.MARLIN
         self.default_url = "https://marlinfw.org/meta/gcode/"
         self.use_local_cache = (url == "local")
         self.url = self.default_url if self.use_local_cache else url
@@ -56,6 +71,14 @@ class MarlinGcodeScraper(GCodeMapping):
             self._init_driver()
 
     def _init_driver(self):
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+        except ImportError as e:
+            raise RuntimeError(
+                "Web scraping requires the optional 'scrape' dependencies. "
+                "Install them with:  pip install gcode-translator[scrape]"
+            ) from e
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--disable-gpu")
@@ -108,8 +131,19 @@ class MarlinGcodeScraper(GCodeMapping):
             )
 
         logger.info("🌐 Scraping Marlin G-code documentation...")
+        from bs4 import BeautifulSoup
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
         self.driver.get(self.url)
-        time.sleep(3)  # wait for JavaScript to render content
+        # Wait until the JS-rendered list items appear (up to 15s) instead of a blind sleep.
+        try:
+            WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, "li"))
+            )
+        except Exception:
+            logger.warning("⚠️ Timed out waiting for page content; parsing what rendered so far.")
         html = self.driver.page_source
         soup = BeautifulSoup(html, "html.parser")
 
@@ -148,6 +182,14 @@ class MarlinGcodeScraper(GCodeMapping):
             logger.warning("⚠️ Could not save mapping to cache: %s", e)
 
         return gcode_map
+
+
+# Registry: which scraper provides the mapping for a given firmware flavor.
+# Marlin is currently used as the generic default too. Add new firmwares here.
+SCRAPERS = {
+    GCodeFlavor.GENERIC: MarlinGcodeScraper,
+    GCodeFlavor.MARLIN: MarlinGcodeScraper,
+}
 
 
 if __name__ == "__main__":

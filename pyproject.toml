@@ -13,12 +13,11 @@ authors = [
   { name = "David Herrmann", email = "david.herrmann@kit.edu" }
 ]
 dependencies = [
-  "selenium",
-  "beautifulsoup4",
   "platformdirs"
 ]
 
 [project.optional-dependencies]
+scrape = ["selenium", "beautifulsoup4"]   # only needed to re-scrape the Marlin mapping
 dev = ["pytest"]
 
 [project.scripts]

@@ -51,8 +51,8 @@ Robustheit und Code-Hygiene**.
 | TEST-1| 🟠 Mittel | pytest-Suite mit `exFiles/`                                          | mittel  | ✅ erledigt |
 | BUG-1 | 🟠 Mittel | Mapping-Pfade vereinheitlichen: Paket-Default + User-Cache          | klein   | ✅ erledigt |
 | BUG-2 | 🟠 Mittel | `subprocess` mit `check=True` + Existenzprüfung der Ausgabedatei     | klein   | ✅ erledigt |
-| HYG-1 | 🟢 Niedrig| Repo aufräumen (`.gitignore`, Artefakte entfernen)                  | klein   |
-| SCRP-1| 🟢 Niedrig| Selenium → optionales Extra; `time.sleep` → `WebDriverWait`         | klein   |
+| HYG-1 | 🟢 Niedrig| `.gitignore` um Artefakte ergänzt (`.idea/`, `*.zip`, `*.bak`, CLI-Outputs) | klein   | ✅ erledigt |
+| SCRP-1| 🟢 Niedrig| Selenium → optionales Extra `[scrape]`; `time.sleep` → `WebDriverWait` | klein   | ✅ erledigt |
 
 > Empfehlung für maximale Wirkung: **LIB-1 + ARCH-1 zusammen** (saubere Bibliotheks-API mit
 > strukturierter Rückgabe) – das macht das Tool für die Chemotion-Integration deutlich solider.
@@ -212,14 +212,23 @@ korrekt 257 Einträge aus der Paket-Ressource (2 neue Tests in `test_mapping.py`
 **Verifiziert:** 4 Tests in `test_binary.py` (gemockt, ohne echtes Binary): non-Linux → `None`,
 `CalledProcessError` → `None`, fehlende Ausgabedatei → `None`, Erfolg → Ausgabepfad.
 
-### BUG-3 — `.gx` wird als UTF-8-Text gelesen 🟠
-**Datei:** `gcode_translator/GCode_Translator.py:207`
+### BUG-3 — Binär-Vorspann der `.gx` überspringen 🟢 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Translator.py` (`use`), `gcode_translator/Binary_GCode_Translator.py`
 
-`.gx` ist ein Binärformat, wird aber zeilenweise als UTF-8-Text gelesen. Nur `errors="replace"`
-verhindert den Crash – sinnvoller Output entsteht kaum.
+**Neubewertung:** `.gx` ist **kein reines Binärformat**, sondern ein Hybrid — ein Header + ein
+eingebettetes BMP, **gefolgt vom G-Code als Klartext** (manche `.gx` sind sogar komplett Text).
+Das Einlesen als Text ist daher grundsätzlich richtig; der gesamte G-Code wird korrekt
+verarbeitet. Einziger echter Makel: der ~14,5 KB Binär-Vorspann (Header + BMP) der binären
+Variante wurde per `errors="replace"` mitgelesen und erzeugte einige Müll-Einträge im Dict
+(gemessen: 2 `"…\x00…: Special command"`-Keys). Umgesetzt:
 
-- [ ] `.gx`-Verarbeitung überdenken: Header/Binärblock korrekt parsen statt als Text einzulesen,
-      oder klar dokumentieren, was unterstützt wird.
+- [x] Neue Helferfunktion `gcode_text_offset()` bestimmt über `_locate_embedded_bmp` das BMP-Ende
+      (= Start des Text-G-Codes); reine Text-`.gx`/andere Dateien → Offset 0.
+- [x] `use()` öffnet binär, `seek(offset)`, liest via `io.TextIOWrapper` ab dem Klartext.
+      Verfahren für `.gcode` unverändert (Offset 0).
+
+**Verifiziert:** binäre und Text-Variante derselben Datei liefern jetzt **identische** `g_dict`/
+`m_dict`; **0** Müll-Keys (vorher 2). 3 neue Tests.
 
 ### BUG-4 — Magic Numbers in `.gx`-Bildextraktion 🟠 ✅ ERLEDIGT (2026-06-29)
 **Datei:** `gcode_translator/Binary_GCode_Translator.py` (`extract_binary_picture_from_gx`)
@@ -293,23 +302,36 @@ zerstörter `M84;`-Key ist jetzt sauber — eine ARCH-1-Bereinigung).
 **Hinweis:** `is_valid_comment` selbst nutzt weiterhin Substring-Matching; das ist jetzt aber nur
 noch für `:`-Zeilen relevant (gewollt, da dort das Rauschen sitzt).
 
-### BUG-6 — Stille Trunkierung von Kommentaren 🟢
-**Datei:** `gcode_translator/GCode_Translator.py:55`
+### BUG-6 — Stille Trunkierung von Kommentaren 🟢 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Translator.py` (`explain_gcode_line`)
 
-`line_to_translate[1:200]` schneidet Kommentare bei 200 Zeichen ab (Magic Number).
+`line_to_translate[1:200]` kappte den Kommentartext stumm bei 199 Zeichen (Magic Number) und
+nahm zudem an, das `;` stehe an Position 0. Nur das `text`-Feld (→ `output.txt`) war betroffen;
+die `meta_value`-Daten für den Converter kamen schon von der vollen Zeile.
 
-- [ ] Konstante mit sprechendem Namen, oder Trunkierung entfernen/begründen.
+- [x] Trunkierung **entfernt** → `comment_text = stripped[1:].strip()` (voller Text, kein Cap).
+- [x] Robustes `;`-Strippen über `stripped` (vorab whitespace-bereinigt) statt der rohen Zeile.
 
-### BUG-7 — Ungenutzte ABC-Abstraktion 🟢
-**Datei:** `gcode_translator/GCode_Mapping.py`
+**Verifiziert:** langer Kommentar (>200 Zeichen) bleibt in `text` vollständig (2 neue Tests).
 
-`abstractmethod` wird importiert, aber nie verwendet; `fetch_gcode_mapping` ist in der Basisklasse
-nur `pass`. `init_mapping` instanziiert erst `GCodeMapping()`, prüft `gcode_type`, verwirft die
-Instanz und baut dann `MarlinGcodeScraper` – umständlich; die Enum-Prüfung ist effektiv tot
-(immer `GENERIC`).
+### BUG-7 — Firmware-Flavor-Abstraktion vervollständigen 🟢 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Mapping.py`, `gcode_translator/GCode_Translator.py`
 
-- [ ] Entweder `@abstractmethod` korrekt verwenden, oder die Basisklasse vereinfachen und die
-      tote `gcode_type`-Prüfung in `init_mapping` entfernen.
+**Kein echter Bug:** Die `GCodeMapping`-Abstraktion + `GCodeFlavor`-Enum waren bewusst als
+Erweiterungspunkt für weitere Firmwares (KLIPPER, REPETIER) angelegt, nur unfertig gelassen.
+Deshalb **nicht entfernt, sondern sauber/funktionsfähig gemacht**:
+
+- [x] `GCodeMapping` ist jetzt eine echte ABC: `fetch_gcode_mapping` mit `@abstractmethod`
+      (Import wird nun genutzt) → Basisklasse nicht mehr instanziierbar.
+- [x] `close()` in die Basis verschoben (no-op default) → auf jedem Scraper sicher aufrufbar.
+- [x] `MarlinGcodeScraper` setzt `gcode_type = MARLIN`.
+- [x] Neue Registry `SCRAPERS = {GCodeFlavor: ScraperClass}` als Erweiterungspunkt; `init_mapping`
+      wählt darüber den Scraper (`flavor=…`, Default MARLIN) — die tote Doppel-Instanziierung und
+      `GENERIC`-Prüfung sind weg.
+
+**Erweiterung künftig:** `GCodeFlavor`-Eintrag + `GCodeMapping`-Subklasse + `SCRAPERS`-Eintrag.
+**Verifiziert:** `GCodeMapping()` → `TypeError`; Registry/Flavor korrekt; `init_mapping` lädt
+weiter 257 Einträge (3 neue Tests).
 
 ### BUG-8 — `.gx`-Bildextraktion ignorierte den Silent-Modus 🟠 ✅ ERLEDIGT (2026-06-29)
 **Datei:** `gcode_translator/GCode_Translator.py`, `gcode_translator/Binary_GCode_Translator.py`
@@ -336,19 +358,21 @@ Es gab einen `exFiles/`-Ordner mit vielen Beispielen, aber **keine Tests**. Umge
 
 - [x] `pytest` als optionale Dev-Abhängigkeit (`[project.optional-dependencies] dev`) +
       `[tool.pytest.ini_options] testpaths = ["tests"]` in `pyproject.toml`.
-- [x] **63 Tests** in `tests/` (alle grün; inkl. `test_mapping.py` (2) — **BUG-1** Cache/Paket-Default):
+- [x] **73 Tests** in `tests/` (alle grün; inkl. `test_mapping.py` (7) — **BUG-1** Cache/Paket-Default,
+      **BUG-7** ABC/Registry, **SCRP-1** optionales Selenium):
       - `test_helper.py` (4) — `add_to_dict_smart` (String→Liste, Duplikate).
-      - `test_explain_line.py` (20) — Befehle, **BUG-9** (Special/Unknown, `;` am Token),
+      - `test_explain_line.py` (22) — Befehle, **BUG-9** (Special/Unknown, `;` am Token),
         **FEAT-1** (`=`/`:`-Paare, leere Werte, Single-Letter), **BUG-5** (`layer`-Settings rein,
-        `:`-Rauschen raus), `is_valid_comment`. *(Inline-Strings + Mini-Mapping.)*
+        `:`-Rauschen raus), **BUG-6** (keine Trunkierung), `is_valid_comment`. *(Inline-Strings + Mini-Mapping.)*
       - `test_aggregation.py` (15) — G/M/other-Split, Metadaten→`other_dict`, Sortierung,
         **FEAT-2** (`compact`/`count`/`full`, Achsen-Bereiche).
-      - `test_binary.py` (9) — **BUG-4** (`_locate_embedded_bmp`, Auto-Detect == Referenz-BMP,
+      - `test_binary.py` (11) — **BUG-4** (`_locate_embedded_bmp`, Auto-Detect == Referenz-BMP,
         Text-`.gx`→None, Override; echte `.gx`/`.bmp`) + **BUG-2** (`binary_gcode_to_gcode`
-        Fehlerpfade, gemockt).
-      - `test_use.py` (12) — **LIB-1** (Rückgabe, keine Dateien, stumm, Exceptions), **LIB-2**
+        Fehlerpfade, gemockt) + **BUG-3** (`gcode_text_offset`).
+      - `test_use.py` (14) — **LIB-1** (Rückgabe, keine Dateien, stumm, Exceptions), **LIB-2**
         (`return_preview`-bytes, keine Datei), **BUG-8** (`.gx`-Silent-Leak), **FEAT-2**
-        (ungültiger Modus → `ValueError`). *(Echte kleine Dateien.)*
+        (ungültiger Modus → `ValueError`), **BUG-3** (Binär-`.gx` == Text-`.gx`, kein Müll).
+        *(Echte kleine Dateien.)*
       - `test_integration.py` (2) — **echte reiche Dateien** end-to-end: PrusaSlicer
         (`temperature`/`bed_temperature`/`nozzle_diameter`/`layer_height`, Befehle, kein Rauschen)
         und AnycubicSlicer/4-Farben (`printer_model`, `filament_type`, 70 `layer`-Keys, `total_layers`,
@@ -366,32 +390,35 @@ Es gab einen `exFiles/`-Ordner mit vielen Beispielen, aber **keine Tests**. Umge
 
 ## 5. Scraping
 
-### SCRP-1 — Selenium robuster & optional machen 🟢
-**Datei:** `gcode_translator/GCode_Mapping.py`
+### SCRP-1 — Selenium robuster & optional machen 🟢 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Mapping.py`, `pyproject.toml`
 
-- [ ] `time.sleep(3)` durch `WebDriverWait` auf ein konkretes Element ersetzen (zuverlässiger).
-- [ ] Selenium + Chrome als Pflicht-Abhängigkeit nur fürs gelegentliche Mapping-Update ist
-      schwergewichtig. Erwägung: einfacher `requests`-Abruf, oder Selenium in ein optionales Extra
-      (`pip install gcode-translator[scrape]`) auslagern, da der Normalbetrieb offline läuft.
+- [x] **`selenium`/`beautifulsoup4` als optionales Extra** `[scrape]` (aus den Pflicht-`dependencies`
+      entfernt; nur noch `platformdirs` ist Pflicht). Die Imports sind jetzt **lazy** (in `_init_driver`
+      bzw. im Scrape-Teil), sodass das Paket **ohne** Selenium importierbar/nutzbar ist — der
+      Offline-Normalbetrieb (lokales/Paket-Mapping) braucht es nicht.
+- [x] Fehlt das Extra und wird trotzdem gescrapt → klare `RuntimeError`-Meldung
+      („pip install gcode-translator[scrape]").
+- [x] `time.sleep(3)` → `WebDriverWait(…, 15).until(presence_of_element_located(...))`; bei Timeout
+      Warnung + graceful weiterparsen statt blind zu warten. (`import time` entfernt.)
+
+**Verifiziert:** mit „versteckten" `selenium`/`bs4` lädt `init_mapping("local")` weiter 257 Einträge;
+`MarlinGcodeScraper()` (Scrape) wirft die hilfreiche `RuntimeError` (2 neue Tests).
 
 ---
 
 ## 6. Repo-Hygiene
 
-### HYG-1 — Artefakte aus dem Repo entfernen 🟢
-Im Working Tree liegen Dateien, die nicht versioniert gehören:
+### HYG-1 — Artefakte ignorieren 🟢 ✅ ERLEDIGT (2026-06-29)
+Im Working Tree lagen nicht-versionierbare Artefakte. Befund: das `.gitignore` (Python-Standard-
+Template) deckte `build/`, `gcode_translator.egg-info/`, `__pycache__/`, `.pytest_cache/`, `dist/`
+**bereits** ab; **keine** dieser Artefakte war je getrackt (`git ls-files` leer) → kein
+`git rm --cached` nötig.
 
-- `build/`
-- `gcode_translator.egg-info/`
-- `.idea/`
-- `GCode_Translator.zip`
-- `output.txt`
-- `preview.png`
-- `.gitignore.bak`
-- `__pycache__/`
-- `.bak`-Dateien in `exFiles/`
+- [x] `.gitignore` um die noch fehlenden Muster ergänzt: `.idea/` (war nur auskommentiert),
+      `*.zip`, `*.bak`, sowie die CLI-Outputs `output.txt` / `preview.png` / `preview_gx.bmp`.
+- [x] Verifiziert mit `git check-ignore`: `.idea/`, `GCode_Translator.zip`, `output.txt`,
+      `preview.png`, `preview_gx.bmp`, `.gitignore.bak` werden alle ignoriert.
 
-Aufgaben:
-
-- [ ] `.gitignore` entsprechend ergänzen.
-- [ ] Diese Dateien aus dem Git-Index entfernen (`git rm --cached ...`).
+**Ergebnis:** `git status` zeigt nur noch Source-/Test-/Doku-Änderungen — bereit zum Commit.
+(`exFiles/` ist bewusst ignoriert; die Tests skippen sauber, wenn die Beispieldateien fehlen.)

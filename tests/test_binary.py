@@ -34,6 +34,18 @@ def test_text_gx_without_bmp_returns_none():
     assert extract_binary_picture_from_gx(str(TEXT_GX)) is None
 
 
+# --- BUG-3: locate where the plain-text G-code starts in a .gx ---------------------
+
+@requires(BINARY_GX)
+def test_gcode_text_offset_skips_binary_preamble():
+    assert B.gcode_text_offset(str(BINARY_GX)) == 58 + 14454  # end of the embedded BMP
+
+
+@requires(TEXT_GX)
+def test_gcode_text_offset_zero_for_plain_text_gx():
+    assert B.gcode_text_offset(str(TEXT_GX)) == 0
+
+
 @requires(BINARY_GX)
 def test_writes_file_only_when_output_path_given(tmp_path):
     out = tmp_path / "preview.bmp"

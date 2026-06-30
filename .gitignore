@@ -174,3 +174,18 @@ cython_debug/
 .pypirc
 
 exFiles
+
+# --- gcode-translator: editor & generated artifacts (not source) ---
+# IDE
+.idea/
+
+# Backup / archive files
+*.bak
+*.zip
+
+# CLI output written into the working directory in CLI mode
+output.txt
+preview.png
+preview_gx.bmp
+
+*claude*

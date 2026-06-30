@@ -1,4 +1,5 @@
 import base64
+import io
 import logging
 import os
 import re
@@ -133,10 +134,12 @@ class GCodeTranslator:
         self.meta_dict = {}        # "; key = value" / "; key: value" pairs -> other_dict
         self.preview_path = preview_path
 
-    def init_mapping(self, url: str | None = None):
-        scraper = GCode_Mapping.GCodeMapping()
-        if scraper.gcode_type == GCode_Mapping.GCodeFlavor.GENERIC or scraper.gcode_type == GCode_Mapping.GCodeFlavor.MARLIN:
-            scraper = GCode_Mapping.MarlinGcodeScraper() if url is None else GCode_Mapping.MarlinGcodeScraper(url)
+    def init_mapping(self, url: str | None = None,
+                     flavor: "GCode_Mapping.GCodeFlavor" = GCode_Mapping.GCodeFlavor.MARLIN):
+        # Pick the scraper for the requested firmware flavor. New firmwares are added by
+        # registering a GCodeMapping subclass in GCode_Mapping.SCRAPERS (see GCodeFlavor).
+        scraper_cls = GCode_Mapping.SCRAPERS.get(flavor, GCode_Mapping.MarlinGcodeScraper)
+        scraper = scraper_cls() if url is None else scraper_cls(url)
         mapping = {}  # initialize as valid empty dic
         try:
             mapping = scraper.fetch_gcode_mapping()
@@ -163,7 +166,9 @@ class GCodeTranslator:
                 self.extract_preview_picture(line_to_translate)
             return GCodeLine(raw=line_to_translate)
         stripped = line_to_translate.strip()
-        comment_text = line_to_translate[1:200].strip()
+        # Text after the leading ';' — kept in full for the human-readable output file
+        # (no silent truncation; stripped already removed any leading whitespace).
+        comment_text = stripped[1:].strip()
 
         # "; key = value" is a reliable setting -> metadata, regardless of the blacklist.
         eq = _META_EQ_RE.match(stripped)
@@ -422,9 +427,15 @@ def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
     translator = GCodeTranslator(preview_path=preview_path)
     gcode_mapping = translator.init_mapping(mapping_source)
 
+    # A binary .gx prefixes the text G-code with a header + BMP thumbnail; skip that
+    # preamble so its bytes are not mis-parsed as commands. Plain-text files start at 0.
+    text_offset = Binary_GCode_Translator.gcode_text_offset(file) if file.endswith(".gx") else 0
+
     out_file = open(output_txt_path, "w", encoding="utf-8", errors="replace") if output_txt_path else None
     try:
-        with open(file, "r", encoding="utf-8", errors="replace") as f:
+        raw = open(file, "rb")
+        raw.seek(text_offset)
+        with io.TextIOWrapper(raw, encoding="utf-8", errors="replace") as f:
             for line in f:
                 gline = translator.explain_gcode_line(
                     line, gcode_mapping,

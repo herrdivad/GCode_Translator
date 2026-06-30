@@ -66,13 +66,18 @@ gcode-translator path/to/your/file.gcode
 
 ## 📦 Dependencies
 
-This project uses the following packages:
+**Required:**
 
-- [`selenium`](https://pypi.org/project/selenium/)
-  - selenium requires Chrome or Chromium installed on your system and be accessible in headless mode. Otherwise use this code with an offline mapping JSON file (should also be delivered by this Repo). 
-- [`beautifulsoup4`](https://pypi.org/project/beautifulsoup4/)
 - [`platformdirs`](https://pypi.org/project/platformdirs/)
   - locates the per-user cache directory. The G/M-code mapping ships read-only inside the package; a freshly scraped mapping is cached under `platformdirs.user_cache_dir("gcode-translator")` (e.g. `~/.cache/gcode-translator/` on Linux) instead of being written into the installed package.
+
+**Optional — only for re-scraping the Marlin mapping** (`pip install gcode-translator[scrape]`):
+
+- [`selenium`](https://pypi.org/project/selenium/)
+  - selenium requires Chrome or Chromium installed and accessible in headless mode.
+- [`beautifulsoup4`](https://pypi.org/project/beautifulsoup4/)
+
+The translator works fully offline using the bundled mapping; the `[scrape]` extras are only needed when you explicitly fetch a fresh mapping from marlinfw.org. Without them, the scraping path raises a clear error telling you to install the extra.
 
 The `bgcode` Linux binary is included in the package and used automatically.
 `bgcode` was built from the official source code from 

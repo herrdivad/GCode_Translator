@@ -125,3 +125,18 @@ def test_is_valid_comment_accepts_real_comment(translator):
 
 def test_is_valid_comment_rejects_blacklisted(translator):
     assert not translator.is_valid_comment(";LAYER:5", ["layer"])
+
+
+# --- BUG-6: comment text is no longer silently truncated --------------------------
+
+def test_long_comment_is_not_truncated(translator, mapping):
+    body = "word " * 100  # ~500 chars, multi-word -> a "valid comment"
+    g = translator.explain_gcode_line("; " + body, mapping)
+    assert g.is_comment
+    assert g.text == body.strip()
+    assert len(g.text) > 200  # would have been capped at 199 before
+
+
+def test_long_metadata_value_is_complete(translator, mapping):
+    g = translator.explain_gcode_line("; notes = " + "x" * 400, mapping)
+    assert g.meta_value == "x" * 400

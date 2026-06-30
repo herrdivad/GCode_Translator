@@ -97,6 +97,26 @@ def extract_picture_bytes_from_content(
     return picture_data, remaining_data
 
 
+def gcode_text_offset(input_path: str) -> int:
+    """Byte offset at which the plain-text G-code begins in a ``.gx`` file.
+
+    A Flashforge ``.gx`` is a hybrid: a binary header + embedded BMP thumbnail,
+    followed by the actual G-code as plain text. This returns the end of that BMP
+    (= start of the text) so the binary preamble can be skipped when translating.
+    Returns 0 for a plain-text ``.gx`` (no embedded BMP) or any other file.
+    """
+    try:
+        with open(input_path, "rb") as infile:
+            header = infile.read(_HEADER_SCAN_BYTES)
+    except OSError:
+        return 0
+    location = _locate_embedded_bmp(header)
+    if location is None:
+        return 0
+    offset, size = location
+    return offset + size
+
+
 def get_bgcode_executable_path():
     with importlib.resources.path('gcode_translator', 'bgcode') as bgcode_path:
         return str(bgcode_path)
