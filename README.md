@@ -71,6 +71,8 @@ This project uses the following packages:
 - [`selenium`](https://pypi.org/project/selenium/)
   - selenium requires Chrome or Chromium installed on your system and be accessible in headless mode. Otherwise use this code with an offline mapping JSON file (should also be delivered by this Repo). 
 - [`beautifulsoup4`](https://pypi.org/project/beautifulsoup4/)
+- [`platformdirs`](https://pypi.org/project/platformdirs/)
+  - locates the per-user cache directory. The G/M-code mapping ships read-only inside the package; a freshly scraped mapping is cached under `platformdirs.user_cache_dir("gcode-translator")` (e.g. `~/.cache/gcode-translator/` on Linux) instead of being written into the installed package.
 
 The `bgcode` Linux binary is included in the package and used automatically.
 `bgcode` was built from the official source code from 

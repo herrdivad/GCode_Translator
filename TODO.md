@@ -49,7 +49,7 @@ Robustheit und Code-Hygiene**.
 | FEAT-2| 🟠 Mittel | Aggregations-Modi `compact`/`count`/`full` über `use(aggregation=…)`  | mittel  | ✅ erledigt |
 | BUG-9 | 🟠 Mittel | Inline-Kommentar vom Befehls-Token trennen; Special/Unknown-Semantik | klein   | ✅ erledigt |
 | TEST-1| 🟠 Mittel | pytest-Suite mit `exFiles/`                                          | mittel  | ✅ erledigt |
-| BUG-1 | 🟠 Mittel | Toten `resources/`-Pfad fixen                                       | klein   |
+| BUG-1 | 🟠 Mittel | Mapping-Pfade vereinheitlichen: Paket-Default + User-Cache          | klein   | ✅ erledigt |
 | BUG-2 | 🟠 Mittel | `subprocess` mit `check=True` + Existenzprüfung der Ausgabedatei     | klein   |
 | HYG-1 | 🟢 Niedrig| Repo aufräumen (`.gitignore`, Artefakte entfernen)                  | klein   |
 | SCRP-1| 🟢 Niedrig| Selenium → optionales Extra; `time.sleep` → `WebDriverWait`         | klein   |
@@ -180,15 +180,24 @@ Gemeinsam mit LIB-1 umgesetzt.
 
 ## 3. Bugs & fragile Stellen
 
-### BUG-1 — Toter Lookup-Pfad für lokale Mapping-JSON 🟠
-**Datei:** `gcode_translator/GCode_Mapping.py:47`
+### BUG-1 — Mapping-Pfade vereinheitlichen 🟠 ✅ ERLEDIGT (2026-06-29)
+**Datei:** `gcode_translator/GCode_Mapping.py`, `pyproject.toml`
 
-`local_json_map_path = Path(os.getcwd()) / "resources" / ...` trifft fast nie, weil die Datei real
-unter `gcode_translator/marlin_mapping.json` (kein `resources/`-Ordner) liegt. Getestet: es wird
-immer der Paket-Fallback genommen.
+Der Code vermischte **drei inkonsistente Pfade**: Lesen #1 `cwd/resources/...` (CWD-relativ, tot),
+Lesen #2/Fallback `gcode_translator/marlin_mapping.json` (via `importlib.resources`, der einzige
+der griff), Schreiben (Scrape) `gcode_translator/resources/...` (also woanders als gelesen wurde,
+zudem oft read-only bei installiertem Paket). Vereinheitlicht entlang des üblichen Standards —
+**zwei klar getrennte Konzepte**:
 
-- [ ] Entweder `resources/`-Ordner einführen und Datei dorthin verschieben, **oder** diesen Pfad
-      korrigieren/entfernen und den Paket-Resource-Lookup als primären Weg dokumentieren.
+- [x] **Read-only Default** (mit dem Paket ausgeliefert) → `importlib.resources.files("gcode_translator")`
+      (als `package-data` deklariert). Toter `cwd/resources/`-Pfad entfernt.
+- [x] **Schreibbarer Cache** (frisch gescrapte Version) → User-Cache-Verzeichnis via
+      `platformdirs.user_cache_dir("gcode-translator")` (Linux `~/.cache/…`, macOS `~/Library/Caches/…`,
+      Windows `%LOCALAPPDATA%\…`). Nicht mehr ins Paketverzeichnis schreiben.
+- [x] Lade-Reihenfolge: User-Cache → Paket-Default → (sonst) Scrape. `platformdirs` als Abhängigkeit.
+
+**Verifiziert:** Cache-Pfad `~/.cache/gcode-translator/marlin_mapping.json`; ohne Cache lädt es
+korrekt 257 Einträge aus der Paket-Ressource (2 neue Tests in `test_mapping.py`).
 
 ### BUG-2 — `binary_gcode_to_gcode` ohne Fehlerprüfung 🟠
 **Datei:** `gcode_translator/Binary_GCode_Translator.py` (`binary_gcode_to_gcode`)
@@ -322,7 +331,7 @@ Es gab einen `exFiles/`-Ordner mit vielen Beispielen, aber **keine Tests**. Umge
 
 - [x] `pytest` als optionale Dev-Abhängigkeit (`[project.optional-dependencies] dev`) +
       `[tool.pytest.ini_options] testpaths = ["tests"]` in `pyproject.toml`.
-- [x] **57 Tests** in `tests/` (alle grün):
+- [x] **59 Tests** in `tests/` (alle grün; inkl. `test_mapping.py` (2) — **BUG-1** Cache/Paket-Default):
       - `test_helper.py` (4) — `add_to_dict_smart` (String→Liste, Duplikate).
       - `test_explain_line.py` (20) — Befehle, **BUG-9** (Special/Unknown, `;` am Token),
         **FEAT-1** (`=`/`:`-Paare, leere Werte, Single-Letter), **BUG-5** (`layer`-Settings rein,

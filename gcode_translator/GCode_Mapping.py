@@ -1,11 +1,11 @@
 import json
 import logging
-import os
 import time
 import re
 from pathlib import Path
 import importlib.resources as resources
 
+from platformdirs import user_cache_dir
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
@@ -44,10 +44,12 @@ class MarlinGcodeScraper(GCodeMapping):
         self.default_url = "https://marlinfw.org/meta/gcode/"
         self.use_local_cache = (url == "local")
         self.url = self.default_url if self.use_local_cache else url
-        # Use importlib to access package resource safely
+        # Read-only default ships inside the package (loaded via importlib.resources);
+        # a freshly scraped mapping is written to the per-user cache directory instead
+        # of into the (often read-only) installed package.
         self.mapping_resource_package = "gcode_translator"
         self.mapping_resource_file = "marlin_mapping.json"
-        self.local_json_map_path = Path(os.getcwd()) / "resources" / self.mapping_resource_file
+        self.cache_path = Path(user_cache_dir("gcode-translator")) / self.mapping_resource_file
         self.driver = None
 
         if not self.use_local_cache:
@@ -77,17 +79,17 @@ class MarlinGcodeScraper(GCodeMapping):
               ...
             }
         """
-        # Case 1: Local JSON file exists
+        # Case 1: load without scraping. Prefer a freshly scraped copy from the user
+        # cache, then fall back to the read-only default shipped with the package.
         if self.use_local_cache:
             try:
-                # First try: in resource folder from local path
-                with open(self.local_json_map_path, "r", encoding="utf-8") as f:
-                    logger.info("✅ Loaded G-code mapping from local file (non-package mode).")
+                # First try: user cache (may be newer than the shipped default).
+                with open(self.cache_path, "r", encoding="utf-8") as f:
+                    logger.info("✅ Loaded G-code mapping from user cache (%s).", self.cache_path)
                     return json.load(f)
             except FileNotFoundError:
-                # Fallback for package usage: direct delivered file from package (No update / up-to-lateness guarantee)
+                # Fallback: the default mapping bundled inside the installed package.
                 try:
-                    # second try: in-package resource
                     with resources.files(self.mapping_resource_package).joinpath(self.mapping_resource_file).open("r",
                                                                                                                   encoding="utf-8") as f:
                         logger.info("✅ Loaded G-code mapping from installed package resource.")
@@ -101,8 +103,8 @@ class MarlinGcodeScraper(GCodeMapping):
             raise RuntimeError(
                 "❌ Selenium driver not initialized – cannot scrape.\n"
                 "💡 Make sure Chrome or Chromium is installed and accessible in headless mode."
-                "➡️ If your are not allowed to use the internet connection, "
-                "✅ make sure to get an offline / local 'resources/marlin_mapping.json' file from the Repo or dev system *and* use this code only in url='local' (default) mode."
+                "➡️ If you are not allowed to use the internet connection, "
+                "✅ make sure the bundled 'marlin_mapping.json' ships with the package (or place one in the user cache) and use this code in url='local' (default) mode."
             )
 
         logger.info("🌐 Scraping Marlin G-code documentation...")
@@ -138,13 +140,12 @@ class MarlinGcodeScraper(GCodeMapping):
                 gcode_map[code_text] = description
 
         try:
-            self.local_json_map_path = Path(__file__).parent / "resources" / "marlin_mapping.json"
-            self.local_json_map_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.local_json_map_path, "w", encoding="utf-8") as f:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.cache_path, "w", encoding="utf-8") as f:
                 json.dump(gcode_map, f, indent=2)
-                logger.info("💾 Saved scraped mapping as local JSON.")
+            logger.info("💾 Saved scraped mapping to user cache (%s).", self.cache_path)
         except Exception as e:
-            logger.warning("⚠️ Could not save local mapping: %s", e)
+            logger.warning("⚠️ Could not save mapping to cache: %s", e)
 
         return gcode_map
 
