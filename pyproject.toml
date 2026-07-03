@@ -34,4 +34,4 @@ packages = ["gcode_translator"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"gcode_translator" = ["bgcode", "*.json"]
+"gcode_translator" = ["bgcode", "*.json", "LICENSE.AGPL-3.0.txt"]

@@ -25,12 +25,41 @@ SOFTWARE.
 This project is licensed under the MIT License.
 
 It makes use of a separately compiled binary (`bgcode`), which is built from the
-[Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode), licensed under the GNU GPL v3.
+[Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode), licensed under the
+GNU Affero General Public License v3.0 (AGPL-3.0).
 
 This external tool is **not included** in this repository's license, and users must comply
-with the GPL v3 when using or distributing the `bgcode` executable.
+with the AGPL-3.0 when using or distributing the `bgcode` executable. The full license text
+is provided in [gcode_translator/LICENSE.AGPL-3.0.txt](./gcode_translator/LICENSE.AGPL-3.0.txt)
+(shipped alongside the `bgcode` binary) and is also available at
+https://www.gnu.org/licenses/agpl-3.0.html.en .
 
 ### 3rd Party Packages and Licenses:
+
+#### platformdirs (MIT)
+https://pypi.org/project/platformdirs/, https://github.com/tox-dev/platformdirs/blob/main/LICENSE
+
+MIT License
+
+Copyright (c) 2010-202x The platformdirs developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 #### selenium (Apache License, Version 2.0)
 https://pypi.org/project/selenium/, https://github.com/SeleniumHQ/selenium/blob/trunk/LICENSE

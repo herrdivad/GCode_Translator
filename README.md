@@ -68,7 +68,7 @@ gcode-translator path/to/your/file.gcode
 
 **Required:**
 
-- [`platformdirs`](https://pypi.org/project/platformdirs/)
+- [`platformdirs`](https://pypi.org/project/platformdirs/) ([MIT license](https://github.com/tox-dev/platformdirs/blob/main/LICENSE))
   - locates the per-user cache directory. The G/M-code mapping ships read-only inside the package; a freshly scraped mapping is cached under `platformdirs.user_cache_dir("gcode-translator")` (e.g. `~/.cache/gcode-translator/` on Linux) instead of being written into the installed package.
 
 **Optional — only for re-scraping the Marlin mapping** (`pip install gcode-translator[scrape]`):
