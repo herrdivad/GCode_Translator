@@ -202,13 +202,29 @@ An unknown mode raises `ValueError`.
 ## 📁 Project Structure
 
 ```
-gcode_translator/
-├── GCode_Translator.py          # CLI and translation logic
-├── Binary_GCode_Translator.py   # Binary decoding using native binary
-├── GCode_Mapping.py             # G/M code mapping using web scraping
-├── helper.py                    # Parser and helper functions
-├── bgcode                       # Embedded C++ executable
-├── marlin_mapping.json          # Package marlin mapping file for systems without Internet connection
+.
+├── gcode_translator/                # the installable package
+│   ├── __init__.py
+│   ├── GCode_Translator.py          # CLI entry point, use() API and translation logic
+│   ├── Binary_GCode_Translator.py   # binary decoding (.bgcode via native binary, .gx preview)
+│   ├── GCode_Mapping.py             # G/M code mapping via web scraping (Marlin)
+│   ├── helper.py                    # parser and helper functions
+│   ├── bgcode                       # bundled native C++ executable (AGPL-3.0, unmodified)
+│   ├── LICENSE.AGPL-3.0.txt         # full AGPL-3.0 text shipped alongside the bgcode binary
+│   └── marlin_mapping.json          # bundled mapping for offline use (no Internet needed)
+├── tests/                           # pytest suite (run: pytest)
+│   ├── conftest.py                  # shared fixtures / sample-file paths
+│   ├── test_use.py                  # end-to-end use() API tests
+│   ├── test_binary.py               # .bgcode / .gx binary handling
+│   ├── test_mapping.py              # mapping / scraper tests
+│   ├── test_aggregation.py          # value-aggregation modes
+│   ├── test_explain_line.py         # single-line explanation
+│   ├── test_helper.py               # helper-function tests
+│   └── test_integration.py          # full real-file integration tests (slicers)
+├── exFiles/                         # real-world sample G-code files used by the tests (empty on GitHub due to rights issues)
+├── LICENSE                          # project MIT license + bgcode AGPL-3.0 compliance notice
+├── README.md
+└── pyproject.toml                   # build config, dependencies, package data
 ```
 
 ---
