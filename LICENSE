@@ -34,6 +34,39 @@ is provided in [gcode_translator/LICENSE.AGPL-3.0.txt](./gcode_translator/LICENS
 (shipped alongside the `bgcode` binary) and is also available at
 https://www.gnu.org/licenses/agpl-3.0.html.en .
 
+### bgcode — Corresponding Source (AGPL-3.0 §6)
+
+The bundled `gcode_translator/bgcode` binary was built, **unmodified**, from the
+Prusa3D libbgcode project. Its complete Corresponding Source is the following
+public revision:
+
+  Binary SHA-256: 15c6fe4d54defc4d375524452f433ff3f4e7a10e3b23f89c14096cd5484c1f4b
+  Repository:     https://github.com/prusa3d/libbgcode
+  Version:        libbgcode 0.2.0
+  Commit:         5041c093b33e2748e76d6b326f2251310823f3df (branch main, 2025-02-20)
+  Source tree:    https://github.com/prusa3d/libbgcode/tree/5041c093b33e2748e76d6b326f2251310823f3df
+
+Build environment used to produce the shipped binary:
+
+  Target:         ELF 64-bit x86-64, dynamically linked, GNU/Linux
+  Toolchain:      GNU g++ 11.4.0
+  Build system:   CMake 3.22.1
+  Configure/build: CMake preset "default" (see the project's CMakePresets.json)
+                   -> CMAKE_BUILD_TYPE=Release, deps preset "default"
+
+    # Reproduce (from a clean checkout of the commit above):
+    git clone https://github.com/prusa3d/libbgcode
+    cd libbgcode
+    git checkout 5041c093b33e2748e76d6b326f2251310823f3df
+    cmake --preset default        # configures deps + project (Release)
+    cmake --build --preset default
+    # resulting tool: build-default/src/LibBGCode/cmd/bgcode
+
+**Written Offer:** The Corresponding Source for the exact version above is publicly
+available at the commit link. In addition, for at least three (3) years from the date
+of distribution, the author will provide, on request, a copy of the complete
+Corresponding Source of this binary. Contact: david.herrmann@kit.edu
+
 ### 3rd Party Packages and Licenses:
 
 #### platformdirs (MIT)

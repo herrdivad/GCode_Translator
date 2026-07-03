@@ -1,8 +1,10 @@
 """End-to-end tests for use(): library API (LIB-1), previews (LIB-2), .gx (BUG-8)."""
+import shutil
+
 import pytest
 
-from gcode_translator.GCode_Translator import use
-from conftest import SMALL_GCODE, BINARY_GX, TEXT_GX, requires
+from gcode_translator.GCode_Translator import use, BGCODE_LICENSE_HINT
+from conftest import SMALL_GCODE, BINARY_GX, TEXT_GX, BGCODE, requires
 
 PNG_MAGIC = b"\x89PNG"
 
@@ -91,6 +93,25 @@ def test_gx_return_preview_gives_bmp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _, previews = use(str(BINARY_GX), return_preview=True)
     assert previews and previews[0][:2] == b"BM"
+
+
+@requires(BGCODE)
+def test_bgcode_conversion_adds_license_hint(tmp_path):
+    """AGPL-3.0 §13: converting a .bgcode invokes the bundled binary, so the first
+    (G-code) dict must carry the Corresponding Source notice under 'License hints'.
+    Convert a copy inside tmp_path so the generated .gcode never lands in exFiles/."""
+    local = tmp_path / BGCODE.name
+    shutil.copy(BGCODE, local)
+    g_dict, _m, _other = use(str(local))
+    assert g_dict.get("License hints") == BGCODE_LICENSE_HINT
+
+
+@requires(SMALL_GCODE)
+def test_plain_gcode_has_no_license_hint(tmp_path, monkeypatch):
+    """Plain .gcode never touches the bgcode binary -> no license hint is injected."""
+    monkeypatch.chdir(tmp_path)
+    g_dict, _m, _other = use(str(SMALL_GCODE))
+    assert "License hints" not in g_dict
 
 
 @requires(BINARY_GX, TEXT_GX)

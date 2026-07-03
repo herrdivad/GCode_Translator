@@ -38,6 +38,16 @@ _META_MIN_KEY_LEN = 2  # config keys are descriptive; 1-char keys are G-code mar
 
 # Value-aggregation strategies for repeated commands/metadata (see use(aggregation=...)).
 AGGREGATIONS = ("compact", "count", "full")
+
+# AGPL-3.0 §13 notice: surfaced only when the bundled bgcode binary is actually used
+# (i.e. a .bgcode file is converted). See LICENSE for the full Corresponding Source record.
+BGCODE_LICENSE_HINT = (
+    "This application uses the AGPL-3.0-licensed tool libbgcode (unmodified, v0.2.0, "
+    "commit 5041c093...). "
+    "Source: https://github.com/prusa3d/libbgcode/tree/"
+    "5041c093b33e2748e76d6b326f2251310823f3df"
+)
+
 _MOVE_COMMANDS = {"G0", "G1", "G2", "G3"}  # get axis-range treatment in "compact" mode
 _AXIS_TOKEN_RE = re.compile(r"^([A-Za-z])([-+]?\d*\.?\d+)$")  # e.g. "X158.835", "Z.25", "E-.8"
 
@@ -404,7 +414,8 @@ def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
             sys.exit(2)
         raise FileNotFoundError(msg + f" Got: {file!r}")
 
-    if file.endswith(".bgcode"):
+    bgcode_converted = file.endswith(".bgcode")
+    if bgcode_converted:
         file = Binary_GCode_Translator.binary_gcode_to_gcode(file)
         if not file:
             raise RuntimeError("Binary G-code conversion failed (Linux + bgcode binary required).")
@@ -451,6 +462,12 @@ def use(file: str = None, output_txt_path=_UNSET, preview_path=_UNSET,
             out_file.close()
 
     result = translator.sort_and_filter_dict(lists_to_strings, aggregation=aggregation)
+
+    # AGPL-3.0 §13: when the bundled bgcode binary was actually invoked, surface the
+    # Corresponding Source notice in the first (G-code) dict returned to the caller.
+    if bgcode_converted and result:
+        result[0]["License hints"] = BGCODE_LICENSE_HINT
+
     if return_preview:
         return result, previews
     return result

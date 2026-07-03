@@ -79,11 +79,58 @@ gcode-translator path/to/your/file.gcode
 
 The translator works fully offline using the bundled mapping; the `[scrape]` extras are only needed when you explicitly fetch a fresh mapping from marlinfw.org. Without them, the scraping path raises a clear error telling you to install the extra.
 
-The `bgcode` Linux binary is included in the package and used automatically.
-`bgcode` was built from the official source code from 
-[Prusa3d](https://github.com/prusa3d/libbgcode) using the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.html.en).
-It is used as a subprocess, and it use agrees with the [GPL FAQ](https://www.gnu.org/licenses/gpl-faq.en.html#MereAggregation).
-If there are complaints, I declare hereby, that I will remove the binary ASAP or change license.
+### `bgcode` binary — licensing & source
+
+The `bgcode` Linux binary is bundled in the package (`gcode_translator/bgcode`) and used
+automatically to convert Prusa `.bgcode` files. It is a separately compiled, **unmodified**
+build of the [Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode), which is
+licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. The binary is
+therefore **not** covered by this project's MIT license; when using or redistributing it you
+must comply with the AGPL-3.0. The full license text ships next to the binary at
+[`gcode_translator/LICENSE.AGPL-3.0.txt`](./gcode_translator/LICENSE.AGPL-3.0.txt).
+
+`bgcode` is invoked only as a separate subprocess (arm's-length communication via command-line
+arguments and files). Under the FSF's [GPL FAQ on mere aggregation](https://www.gnu.org/licenses/gpl-faq.en.html#MereAggregation)
+this does not create a combined work, so the MIT-licensed Python code keeps its MIT license.
+Distributing the AGPL binary, however, carries the AGPL's own obligations (see below).
+
+**Corresponding Source (AGPL-3.0 §6).** The shipped binary corresponds exactly to this public
+revision (verified by hash):
+
+| Field | Value |
+|-------|-------|
+| Binary SHA-256 | `15c6fe4d54defc4d375524452f433ff3f4e7a10e3b23f89c14096cd5484c1f4b` |
+| Repository | https://github.com/prusa3d/libbgcode |
+| Version | libbgcode 0.2.0 |
+| Commit | [`5041c093b33e2748e76d6b326f2251310823f3df`](https://github.com/prusa3d/libbgcode/tree/5041c093b33e2748e76d6b326f2251310823f3df) (branch `main`, 2025-02-20) |
+| Local modifications | none (clean upstream checkout) |
+
+**Build environment** used to produce the shipped binary:
+
+| Field | Value |
+|-------|-------|
+| Target | ELF 64-bit x86-64, dynamically linked, GNU/Linux |
+| Toolchain | GNU g++ 11.4.0 |
+| Build system | CMake 3.22.1 |
+| Configure/build | CMake preset `default` → `CMAKE_BUILD_TYPE=Release`, deps preset `default` |
+
+Reproduce from a clean checkout:
+
+```bash
+git clone https://github.com/prusa3d/libbgcode
+cd libbgcode
+git checkout 5041c093b33e2748e76d6b326f2251310823f3df
+cmake --preset default        # configures deps + project (Release)
+cmake --build --preset default
+# resulting tool: build-default/src/LibBGCode/cmd/bgcode
+```
+
+**Written Offer.** The Corresponding Source for the exact version above is publicly available
+at the commit link. In addition, for at least three (3) years from the date of distribution,
+the author will provide, on request, a copy of the complete Corresponding Source of this
+binary. Contact: david.herrmann@kit.edu
+
+The full AGPL-3.0 compliance statement is also recorded in [LICENSE](./LICENSE).
 
 ---
 

@@ -17,6 +17,9 @@ REFERENCE_BMP = EXFILES / "modern_Flashforge_Ninetales_binaryPreview.bmp"
 PRUSA_GCODE = EXFILES / "MainConnectorCover_0.4n_0.2mm_PLA_MINIIS_16m(1).gcode"  # PrusaSlicer, ~26k lines, fast
 NECRO_GCODE = EXFILES / "4color_necroDragon_PLA_0.2_3h39m58s.gcode"             # AnycubicSlicer, large (slow)
 
+# Prusa binary G-code — triggers the bundled bgcode binary (Linux required).
+BGCODE = EXFILES / "AbstandshalterZinsserWaage_0.4n_0.2mm_PLA_MINIIS_1h10m(1).bgcode"
+
 
 def requires(*paths):
     """Return a marker that *skips* (never fails) a test when any required
