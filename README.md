@@ -25,7 +25,7 @@ Using this order (1) > (2) > (3) in default **use() / CLI** mode!
 
 ```bash
 git clone https://github.com/herrdivad/GCode_Translator
-cd gcode-translator
+cd GCode_Translator/
 pip install -e .
 ```
 
