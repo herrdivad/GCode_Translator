@@ -1,8 +1,9 @@
 # GCode Translator
 
 A powerful Python-based tool for reading, interpreting, and converting standard and binary G-code (`.bgcode`) files.  
-It integrates a native C++ binary (`bgcode`) and uses web scraping (3) to retrieve command documentation from Marlin firmware resources
-or a local (1) / package (2) marlin_mapping.json file.
+It can optionally integrate a native C++ binary (`bgcode`) — shipped as an opt-in, platform-specific
+companion package (see [Installation](#-installation)) — and uses web scraping (3) to retrieve command
+documentation from Marlin firmware resources or a local (1) / package (2) marlin_mapping.json file.
 
 Using this order (1) > (2) > (3) in default **use() / CLI** mode!
 
@@ -26,14 +27,47 @@ Using this order (1) > (2) > (3) in default **use() / CLI** mode!
 ```bash
 git clone https://github.com/herrdivad/GCode_Translator
 cd GCode_Translator/
-pip install -e .
+pip install -e .                          # base package only (binary-free)
+```
+
+`pip install -e .` installs **only** the binary-free base package — no `bgcode` companion.
+To also work on `.bgcode` conversion locally, add the companion in one of two ways:
+
+```bash
+# a) via the extra — resolves the companion from the git URL in pyproject.toml (needs the
+#    branch pushed to GitHub); the base package stays editable, the companion does not:
+pip install -e ".[linux]"
+
+# b) fully local & editable — install the companion straight from its folder, so edits to
+#    the companion package take effect without a push (recommended while developing it):
+pip install -e ./companion/bgcode-linux
 ```
 
 ### 📦 Install directly via pip:
 
+The base package is **binary-free** (MIT only) and handles `.gcode` and `.gx` files:
+
 ```bash
 pip install git+https://github.com/herrdivad/GCode_Translator
 ```
+
+To also convert Prusa `.bgcode` files, install the platform's `bgcode` companion binary
+via an extra. The companion is AGPL-3.0 and is only pulled in when you ask for it:
+
+```bash
+# Linux (available):
+pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Translator.git"
+
+# Windows (available) — self-contained /MT build, needs no VC++ Redistributable:
+pip install "gcode-translator[windows] @ git+https://github.com/herrdivad/GCode_Translator.git"
+
+# macOS: planned — the [macos] extra is reserved for when its companion binary
+# is added under companion/.
+```
+
+Each extra is guarded by a platform marker, so requesting the "wrong" one for your OS is
+a harmless no-op. Without a companion installed, `.bgcode` conversion fails with a clear
+message telling you which extra to install; `.gcode` / `.gx` handling is unaffected.
 
 ---
 
@@ -81,13 +115,23 @@ The translator works fully offline using the bundled mapping; the `[scrape]` ext
 
 ### `bgcode` binary — licensing & source
 
-The `bgcode` Linux binary is bundled in the package (`gcode_translator/bgcode`) and used
-automatically to convert Prusa `.bgcode` files. It is a separately compiled, **unmodified**
-build of the [Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode), which is
-licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. The binary is
-therefore **not** covered by this project's MIT license; when using or redistributing it you
-must comply with the AGPL-3.0. The full license text ships next to the binary at
-[`gcode_translator/LICENSE.AGPL-3.0.txt`](./gcode_translator/LICENSE.AGPL-3.0.txt).
+The `bgcode` binaries are **not** part of the MIT base package. They ship as separate,
+opt-in, platform-specific companion packages, installed only via the matching extra
+(see [Installation](#-installation)):
+
+- Linux — [`companion/bgcode-linux/`](./companion/bgcode-linux/), via `[linux]`
+- Windows — [`companion/bgcode-windows/`](./companion/bgcode-windows/), via `[windows]`
+
+Once installed, the binary is used automatically to convert Prusa `.bgcode` files. It is a
+separately compiled build of the [Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode),
+which is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. The binaries
+are therefore **not** covered by this project's MIT license; when using or redistributing them
+you must comply with the AGPL-3.0. Each companion ships the full AGPL-3.0 license text plus its
+own Corresponding Source record (commit, build environment, and — for Windows — the build-script
+patch), e.g. [`companion/bgcode-linux/LICENSE.AGPL-3.0.txt`](./companion/bgcode-linux/LICENSE.AGPL-3.0.txt).
+The Linux build is a clean upstream checkout; the Windows build uses the **unmodified** libbgcode
+source with two documented patches to the *dependency build scripts only* (static `/MT` runtime +
+a CMake policy floor), recorded in the Windows companion's `CORRESPONDING_SOURCE.md`.
 
 `bgcode` is invoked only as a separate subprocess (arm's-length communication via command-line
 arguments and files). Under the FSF's [GPL FAQ on mere aggregation](https://www.gnu.org/licenses/gpl-faq.en.html#MereAggregation)
@@ -203,15 +247,30 @@ An unknown mode raises `ValueError`.
 
 ```
 .
-├── gcode_translator/                # the installable package
+├── gcode_translator/                # the installable base package (MIT, binary-free)
 │   ├── __init__.py
 │   ├── GCode_Translator.py          # CLI entry point, use() API and translation logic
-│   ├── Binary_GCode_Translator.py   # binary decoding (.bgcode via native binary, .gx preview)
+│   ├── Binary_GCode_Translator.py   # binary decoding (.bgcode via companion binary, .gx preview)
 │   ├── GCode_Mapping.py             # G/M code mapping via web scraping (Marlin)
 │   ├── helper.py                    # parser and helper functions
-│   ├── bgcode                       # bundled native C++ executable (AGPL-3.0, unmodified)
-│   ├── LICENSE.AGPL-3.0.txt         # full AGPL-3.0 text shipped alongside the bgcode binary
 │   └── marlin_mapping.json          # bundled mapping for offline use (no Internet needed)
+├── companion/                       # opt-in, platform-specific binary packages (installed via extras)
+│   ├── bgcode-linux/                # AGPL-3.0 Linux bgcode binary + its own pyproject/README/license
+│   │   ├── pyproject.toml           # package "gcode-translator-bgcode-linux"
+│   │   ├── README.md                # AGPL-3.0 Corresponding Source record
+│   │   ├── LICENSE.AGPL-3.0.txt     # full AGPL-3.0 text, shipped with the binary
+│   │   └── gcode_translator_bgcode_linux/
+│   │       ├── __init__.py          # exposes binary_path()
+│   │       └── bgcode               # native C++ executable (AGPL-3.0, unmodified)
+│   └── bgcode-windows/              # AGPL-3.0 Windows bgcode.exe (static /MT, no VC++ redist needed)
+│       ├── pyproject.toml           # package "gcode-translator-bgcode-windows"
+│       ├── README.md                # AGPL-3.0 overview + build/patch summary
+│       ├── LICENSE.AGPL-3.0.txt     # full AGPL-3.0 text, shipped with the binary
+│       └── gcode_translator_bgcode_windows/
+│           ├── __init__.py          # exposes binary_path()
+│           ├── bgcode.exe           # native build (AGPL-3.0; source unmodified, build scripts patched)
+│           ├── CORRESPONDING_SOURCE.md  # AGPL-3.0 §6 record (shipped in the wheel)
+│           └── *.patch              # dependency build-script patch (part of Corresponding Source)
 ├── tests/                           # pytest suite (run: pytest)
 │   ├── conftest.py                  # shared fixtures / sample-file paths
 │   ├── test_use.py                  # end-to-end use() API tests

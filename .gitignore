@@ -189,3 +189,6 @@ preview.png
 preview_gx.bmp
 
 *claude*
+
+# Local native-build workspace for the bgcode companion binaries (not tracked)
+/src/

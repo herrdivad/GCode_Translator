@@ -1,4 +1,4 @@
-import importlib.resources
+import importlib
 import logging
 import os
 import stat
@@ -117,23 +117,52 @@ def gcode_text_offset(input_path: str) -> int:
     return offset + size
 
 
+# Maps sys.platform to the companion package that ships that platform's bgcode binary.
+# The binary is no longer bundled in this package; it is installed opt-in via the
+# gcode-translator "linux"/"windows"/"macos" extras (see pyproject.toml).
+_BGCODE_COMPANION_MODULES = {
+    "linux": "gcode_translator_bgcode_linux",
+    "win32": "gcode_translator_bgcode_windows",
+    "darwin": "gcode_translator_bgcode_macos",
+}
+
+
 def get_bgcode_executable_path():
-    with importlib.resources.path('gcode_translator', 'bgcode') as bgcode_path:
-        return str(bgcode_path)
+    """Locate the bgcode binary from the platform-appropriate companion package.
+
+    Raises ``RuntimeError`` with an install hint if the current platform is
+    unsupported or the matching companion package is not installed (i.e. the
+    package was installed binary-free).
+    """
+    module_name = _BGCODE_COMPANION_MODULES.get(sys.platform)
+    if module_name is not None:
+        try:
+            return importlib.import_module(module_name).binary_path()
+        except ModuleNotFoundError:
+            pass
+
+    raise RuntimeError(
+        f"No bgcode binary available for platform {sys.platform!r}. "
+        "Install the matching companion package, e.g.: "
+        'pip install "gcode-translator[linux] @ '
+        'git+https://github.com/herrdivad/GCode_Translator.git"'
+    )
 
 
 def binary_gcode_to_gcode(bgcode, bgcode_binEXEC_path=None):
-    """Convert a Prusa ``.bgcode`` file to ``.gcode`` via the bundled native binary.
+    """Convert a Prusa ``.bgcode`` file to ``.gcode`` via the native bgcode binary.
 
-    Returns the path to the produced ``.gcode`` file, or ``None`` if the platform is
-    unsupported, the conversion fails, or the expected output file is not created.
+    The binary comes from the platform-specific companion package (resolved by
+    ``get_bgcode_executable_path``). Returns the path to the produced ``.gcode``
+    file, or ``None`` if no binary is available for this platform, the conversion
+    fails, or the expected output file is not created.
     """
-    if not sys.platform.startswith("linux"):
-        logger.error("This script only works on Linux!")
-        return None
-
     if not bgcode_binEXEC_path:
-        bgcode_binEXEC_path = get_bgcode_executable_path()
+        try:
+            bgcode_binEXEC_path = get_bgcode_executable_path()
+        except RuntimeError as e:
+            logger.error("❌ %s", e)
+            return None
 
     logger.info("Using bgcode binary: %s", bgcode_binEXEC_path)
     logger.info("Input file: %s", bgcode)
@@ -156,6 +185,10 @@ def binary_gcode_to_gcode(bgcode, bgcode_binEXEC_path=None):
 
 
 def make_executable(path):
+    # Wheels do not preserve the +x bit, so restore it. No-op on Windows, where the
+    # execute permission is not modeled and the binary is a ``.exe``.
+    if os.name != "posix":
+        return
     st = os.stat(path)
     os.chmod(path, st.st_mode | stat.S_IEXEC)
 

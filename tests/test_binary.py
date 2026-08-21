@@ -63,9 +63,21 @@ def _stub_binary(monkeypatch):
     monkeypatch.setattr(B, "make_executable", lambda path: None)
 
 
-def test_bgcode_non_linux_returns_none(monkeypatch):
-    monkeypatch.setattr(B.sys, "platform", "win32")
+def test_bgcode_no_binary_available_returns_none(monkeypatch):
+    # An unsupported platform (or a missing companion package) means no binary is
+    # available; get_bgcode_executable_path raises and the conversion returns None.
+    monkeypatch.setattr(B.sys, "platform", "sunos5")
     assert B.binary_gcode_to_gcode("model.bgcode") is None
+
+
+def test_get_bgcode_executable_path_resolves_companion(monkeypatch):
+    # A supported platform whose companion package is importable yields its binary path.
+    import types
+    fake = types.ModuleType("gcode_translator_bgcode_linux")
+    fake.binary_path = lambda: "/opt/companion/bgcode"
+    monkeypatch.setattr(B.sys, "platform", "linux")
+    monkeypatch.setattr(B.importlib, "import_module", lambda name: fake)
+    assert B.get_bgcode_executable_path() == "/opt/companion/bgcode"
 
 
 def test_bgcode_conversion_failure_returns_none(tmp_path, monkeypatch):

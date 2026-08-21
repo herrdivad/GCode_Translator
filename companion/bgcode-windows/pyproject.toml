@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gcode-translator-bgcode-windows"
+version = "1.0.0"
+description = "Windows bgcode binary (libbgcode, AGPL-3.0) for the gcode-translator package"
+requires-python = ">=3.10"
+license = { file = "LICENSE.AGPL-3.0.txt" }
+authors = [
+  { name = "David Herrmann", email = "david.herrmann@kit.edu" }
+]
+
+[tool.setuptools]
+packages = ["gcode_translator_bgcode_windows"]
+include-package-data = true
+
+# Ship the AGPL-3.0 Corresponding Source (the build-script patch + its documentation)
+# INSIDE the package so a built wheel is self-contained for AGPL compliance, not only the
+# git checkout.
+[tool.setuptools.package-data]
+"gcode_translator_bgcode_windows" = ["bgcode.exe", "CORRESPONDING_SOURCE.md", "*.patch"]

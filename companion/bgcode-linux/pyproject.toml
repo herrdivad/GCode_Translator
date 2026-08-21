@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gcode-translator-bgcode-linux"
+version = "1.0.0"
+description = "Linux bgcode binary (libbgcode, AGPL-3.0) for the gcode-translator package"
+requires-python = ">=3.10"
+license = { file = "LICENSE.AGPL-3.0.txt" }
+authors = [
+  { name = "David Herrmann", email = "david.herrmann@kit.edu" }
+]
+
+[tool.setuptools]
+packages = ["gcode_translator_bgcode_linux"]
+include-package-data = true
+
+# Ship the AGPL-3.0 Corresponding Source record INSIDE the package so a built wheel is
+# self-contained for AGPL compliance, not only the git checkout. (This is a clean upstream
+# build, so there is no build-script patch to ship — unlike the Windows companion.)
+[tool.setuptools.package-data]
+"gcode_translator_bgcode_linux" = ["bgcode", "CORRESPONDING_SOURCE.md"]

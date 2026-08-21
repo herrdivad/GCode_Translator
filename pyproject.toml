@@ -20,6 +20,23 @@ dependencies = [
 scrape = ["selenium", "beautifulsoup4"]   # only needed to re-scrape the Marlin mapping
 dev = ["pytest"]
 
+# Native bgcode binaries are shipped as separate, opt-in companion packages so the
+# base install stays binary-free (and free of the AGPL-3.0 binary). Each extra pulls
+# its platform's companion via a git direct reference and is guarded by a platform
+# marker, so installing the "wrong" extra on a given OS is simply a no-op.
+# Usage: pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Translator.git"
+linux = [
+  "gcode-translator-bgcode-linux @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-linux ; sys_platform == 'linux'",
+]
+# windows/macos companions do not exist yet; the extras are placeholders for when
+# their binaries are added under companion/bgcode-windows and companion/bgcode-macos.
+windows = [
+  "gcode-translator-bgcode-windows @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-windows ; sys_platform == 'win32'",
+]
+macos = [
+  "gcode-translator-bgcode-macos @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-macos ; sys_platform == 'darwin'",
+]
+
 [project.scripts]
 gcode-translator = "gcode_translator.GCode_Translator:main"
 
@@ -33,5 +50,9 @@ markers = [
 packages = ["gcode_translator"]
 include-package-data = true
 
+# This package ships no AGPL-covered material: the bgcode binary and its AGPL-3.0
+# license text now live in the platform companion packages under companion/. The
+# base package is MIT-only; the runtime AGPL-3.0 notice is just a text pointer to the
+# upstream source (see BGCODE_LICENSE_HINT in GCode_Translator.py).
 [tool.setuptools.package-data]
-"gcode_translator" = ["bgcode", "*.json", "LICENSE.AGPL-3.0.txt"]
+"gcode_translator" = ["*.json"]

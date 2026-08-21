@@ -22,23 +22,28 @@ SOFTWARE.
 
 ### License Notice
 
-This project is licensed under the MIT License.
+This project (the `gcode_translator` package) is licensed under the MIT License and
+ships **no** AGPL-covered material.
 
-It makes use of a separately compiled binary (`bgcode`), which is built from the
+It can optionally make use of a separately compiled binary (`bgcode`), built from the
 [Prusa3D libbgcode project](https://github.com/prusa3d/libbgcode), licensed under the
-GNU Affero General Public License v3.0 (AGPL-3.0).
+GNU Affero General Public License v3.0 (AGPL-3.0). That binary is **not** part of this
+MIT package: it is distributed as a separate, opt-in companion package under
+[`companion/bgcode-linux/`](./companion/bgcode-linux/) and is installed only when the
+user explicitly requests it (e.g. `pip install "gcode-translator[linux] @ git+..."`).
 
-This external tool is **not included** in this repository's license, and users must comply
-with the AGPL-3.0 when using or distributing the `bgcode` executable. The full license text
-is provided in [gcode_translator/LICENSE.AGPL-3.0.txt](./gcode_translator/LICENSE.AGPL-3.0.txt)
-(shipped alongside the `bgcode` binary) and is also available at
-https://www.gnu.org/licenses/agpl-3.0.html.en .
+This external tool is **not included** in the MIT license, and users must comply with the
+AGPL-3.0 when using or distributing the `bgcode` executable. The full license text ships
+inside the companion package at
+[companion/bgcode-linux/LICENSE.AGPL-3.0.txt](./companion/bgcode-linux/LICENSE.AGPL-3.0.txt)
+and is also available at https://www.gnu.org/licenses/agpl-3.0.html.en .
 
 ### bgcode — Corresponding Source (AGPL-3.0 §6)
 
-The bundled `gcode_translator/bgcode` binary was built, **unmodified**, from the
-Prusa3D libbgcode project. Its complete Corresponding Source is the following
-public revision:
+The `bgcode` binary shipped in the companion package
+(`companion/bgcode-linux/gcode_translator_bgcode_linux/bgcode`) was built,
+**unmodified**, from the Prusa3D libbgcode project. Its complete Corresponding Source
+is the following public revision:
 
   Binary SHA-256: 15c6fe4d54defc4d375524452f433ff3f4e7a10e3b23f89c14096cd5484c1f4b
   Repository:     https://github.com/prusa3d/libbgcode

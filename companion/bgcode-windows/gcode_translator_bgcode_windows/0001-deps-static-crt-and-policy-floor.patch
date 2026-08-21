@@ -1,0 +1,37 @@
+--- a/deps/CMakeLists.txt
++++ b/deps/CMakeLists.txt
+@@ -1,4 +1,13 @@
+ cmake_minimum_required(VERSION 3.12)
++
++# Enable CMP0091 (MSVC runtime abstraction) BEFORE project() so this superbuild's
++# computed CMAKE_<LANG>_FLAGS_RELEASE do NOT contain /MD. Those flags are forwarded
++# verbatim to every dependency sub-build (see AddCMakeProject.cmake), so a stray /MD
++# here would override the static-runtime request below.
++if (POLICY CMP0091)
++    cmake_policy(SET CMP0091 NEW)
++endif ()
++
+ project(LibBGCode_Deps)
+ 
+ # Support legacy parameter DESTDIR
+@@ -39,6 +48,20 @@
+     set(DEP_CMAKE_OPTS "-DCMAKE_CXX_FLAGS=-fms-extensions")
+ endif ()
+ 
++# Newer CMake (e.g. the one bundled with VS 2026) removed compatibility with the
++# very old cmake_minimum_required() versions declared by some vendored deps such
++# as ZLIB. Pin a policy floor so those sub-projects still configure.
++list(APPEND DEP_CMAKE_OPTS "-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
++
++# Build every dependency against the STATIC MSVC runtime (/MT) so the produced
++# bgcode.exe has no external vcruntime140/msvcp140 DLL dependency. Needs CMP0091 NEW
++# in each sub-project too, alongside the request itself.
++if (MSVC)
++    list(APPEND DEP_CMAKE_OPTS
++        "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW"
++        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded")
++endif ()
++
+ include(${PROJECT_SOURCE_DIR}/../cmake/modules/AddCMakeProject.cmake)
+ 
+ set(supported_packages Boost heatshrink Catch2 ZLIB pybind11)
