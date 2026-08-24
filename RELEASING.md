@@ -14,7 +14,7 @@ reference** in `pyproject.toml`, e.g.:
 gcode-translator-bgcode-linux @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-linux ; sys_platform == 'linux'
 ```
 
-With no ref, that URL tracks the default branch (`main`) — fine for "install
+With no ref, that URL tracks the default branch (`master`) — fine for "install
 latest", but **not reproducible**. A release pins the ref to a tag so the base
 package and its companion always come from the *same* commit.
 
@@ -33,12 +33,22 @@ For a release `vX.Y.Z` (replace `X.Y.Z` everywhere below):
      (new libbgcode build); otherwise leave as-is. See "Companion version" below.
 
 2. **Pin the extra URLs to the tag** in `pyproject.toml`. Add `@vX.Y.Z`
-   *before* the `#subdirectory` fragment in each extra (`linux`, `windows`,
-   `macos`):
+   *before* the `#subdirectory` fragment in **every** extra (`linux`, `windows`,
+   `macos`) — including the ones whose companion does not exist yet:
 
    ```
    ... GCode_Translator.git@vX.Y.Z#subdirectory=companion/bgcode-linux ; sys_platform == 'linux'
    ```
+
+   > ⚠️ **This step is what makes the release reproducible — do not skip it.**
+   > An unpinned URL inside a tagged commit silently resolves to whatever is on
+   > `master` at install time, so two people installing "the same" tag can end up
+   > with different companion binaries. Check afterwards that no unpinned URL is
+   > left:
+   >
+   > ```bash
+   > grep -n 'GCode_Translator.git#' pyproject.toml   # must print nothing
+   > ```
 
 3. **Clean stale build artifacts and run the tests** (must be green):
 
@@ -54,7 +64,7 @@ For a release `vX.Y.Z` (replace `X.Y.Z` everywhere below):
    git add pyproject.toml companion/bgcode-linux/pyproject.toml
    git commit -m "release vX.Y.Z"
    git tag vX.Y.Z
-   git push origin main --follow-tags
+   git push origin master --follow-tags
    ```
 
 5. **(Optional) GitHub Release.** Create a Release from tag `vX.Y.Z` with a
@@ -79,7 +89,7 @@ deactivate
 ## What users install
 
 ```bash
-# latest (tracks main, not reproducible):
+# latest (tracks master, not reproducible):
 pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Translator.git"
 
 # pinned release (reproducible):
@@ -95,12 +105,15 @@ pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Tr
   only when the shipped binary actually changes (e.g. a new libbgcode build),
   and record the new Corresponding Source details in
   `companion/bgcode-linux/README.md`.
-- **Placeholder extras.** `[windows]` / `[macos]` point at companion
-  directories that do not exist yet. Pinning their URLs to the tag is harmless:
-  they only resolve if someone requests that extra on that platform, which fails
-  cleanly until those companions are added.
-- **After tagging, keep `main` moving.** New work on `main` can leave the extra
-  URLs pinned to the last tag or reset them to unpinned (tracking `main`) — just
-  re-pin them at the next release. Whatever you choose, the pinned tag stays
+- **Placeholder extras.** As of `v1.2.0` the Linux *and* Windows companions
+  exist (`companion/bgcode-linux/`, `companion/bgcode-windows/`); only `[macos]`
+  still points at a directory that has not been added yet. Pinning its URL to the
+  tag is harmless: it only resolves if someone requests that extra on that
+  platform, which fails cleanly until the companion is added.
+- **After tagging, keep `master` moving.** New work on `master` can leave the
+  extra URLs pinned to the last tag or reset them to unpinned (tracking
+  `master`) — just re-pin them at the next release. This project keeps them
+  **pinned**, so a fresh clone of `master` always installs a known-good
+  companion. Whatever you choose, the pinned tag stays
   reproducible because its commit is frozen.
 ```

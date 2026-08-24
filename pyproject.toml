@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gcode-translator"
-version = "1.0.1"
+version = "1.2.0"
 description = "A tool for translating and converting GCode and Binary GCode formats"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,17 +24,18 @@ dev = ["pytest"]
 # base install stays binary-free (and free of the AGPL-3.0 binary). Each extra pulls
 # its platform's companion via a git direct reference and is guarded by a platform
 # marker, so installing the "wrong" extra on a given OS is simply a no-op.
-# Usage: pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Translator.git"
+# Usage: pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0"
 linux = [
-  "gcode-translator-bgcode-linux @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-linux ; sys_platform == 'linux'",
+  "gcode-translator-bgcode-linux @ git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0#subdirectory=companion/bgcode-linux ; sys_platform == 'linux'",
 ]
-# windows/macos companions do not exist yet; the extras are placeholders for when
-# their binaries are added under companion/bgcode-windows and companion/bgcode-macos.
+# The Windows companion exists (companion/bgcode-windows). The macOS extra is still a
+# placeholder for when its binary is added under companion/bgcode-macos; requesting
+# [macos] on darwin fails cleanly until then.
 windows = [
-  "gcode-translator-bgcode-windows @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-windows ; sys_platform == 'win32'",
+  "gcode-translator-bgcode-windows @ git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0#subdirectory=companion/bgcode-windows ; sys_platform == 'win32'",
 ]
 macos = [
-  "gcode-translator-bgcode-macos @ git+https://github.com/herrdivad/GCode_Translator.git#subdirectory=companion/bgcode-macos ; sys_platform == 'darwin'",
+  "gcode-translator-bgcode-macos @ git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0#subdirectory=companion/bgcode-macos ; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

@@ -1,0 +1,30 @@
+# Normalise line endings. The repository always stores LF; the working tree is
+# checked out with LF too (eol=lf), so a Windows IDE and WSL/git see the same
+# bytes and no file shows up as "modified" just because it was saved.
+* text=auto eol=lf
+
+# Explicit text types (belt and braces if auto-detection is ever disabled).
+*.py     text eol=lf
+*.md     text eol=lf
+*.toml   text eol=lf
+*.cfg    text eol=lf
+*.json   text eol=lf
+*.txt    text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.patch  text eol=lf
+*.gcode  text eol=lf
+
+# Windows-native scripts must keep CRLF to stay executable.
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+
+# Binaries: never touched, never diffed as text.
+companion/bgcode-linux/gcode_translator_bgcode_linux/bgcode      binary
+companion/bgcode-windows/gcode_translator_bgcode_windows/bgcode.exe binary
+*.bgcode binary
+*.gx     binary
+*.png    binary
+*.jpg    binary
+*.zip    binary

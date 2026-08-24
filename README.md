@@ -69,6 +69,24 @@ Each extra is guarded by a platform marker, so requesting the "wrong" one for yo
 a harmless no-op. Without a companion installed, `.bgcode` conversion fails with a clear
 message telling you which extra to install; `.gcode` / `.gx` handling is unaffected.
 
+### Platform Support
+
+| Platform | Extra | Status | Install (pinned to the current release) |
+|----------|-------|--------|------------------------------------------|
+| Linux | `[linux]` | ✅ available | `pip install "gcode-translator[linux] @ git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0"` |
+| Windows | `[windows]` | ✅ available | `pip install "gcode-translator[windows] @ git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0"` |
+| macOS | `[macos]` | 🚧 planned | not yet available — install the base package only: `pip install "git+https://github.com/herrdivad/GCode_Translator.git@v1.2.0"` |
+| any | *(none)* | ✅ always | base package, binary-free, `.gcode` / `.gx` only |
+
+The `[macos]` extra already exists in `pyproject.toml` but points at a companion directory
+that has not been added yet, so requesting it on macOS fails at install time. Until the
+macOS binary ships, use the base package there; everything except `.bgcode` decoding works.
+
+Dropping the `@v1.2.0` ref installs whatever is currently on `master` — convenient for
+"give me the latest", but not reproducible. For anything you want to be able to rebuild
+later, keep the tag. See [RELEASING.md](./RELEASING.md) for the release workflow and
+[CHANGELOG.md](./CHANGELOG.md) for what changed between versions.
+
 ---
 
 ## ✅ Tests
